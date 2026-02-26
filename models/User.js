@@ -6,7 +6,6 @@ const userSchema = new mongoose.Schema({
     phone: { type: String },
     password: { type: String, required: true },
 
-    // ⭐ NEW FIELD
     role: {
         type: String,
         enum: ['user', 'admin'],
@@ -37,6 +36,17 @@ const userSchema = new mongoose.Schema({
 
     payment_reference: {
         type: String,
+        default: null
+    },
+
+    // 🔥 ADD THESE TWO
+    resetToken: {
+        type: String,
+        default: null
+    },
+
+    resetTokenExpiry: {
+        type: Date,
         default: null
     },
 

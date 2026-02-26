@@ -136,4 +136,68 @@ router.put('/update-profile', auth, async (req, res) => {
 
   res.json({ success: true });
 });
+// ===== FORGOT PASSWORD =====
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    user.resetToken = resetToken;
+    user.resetTokenExpiry = Date.now() + 1000 * 60 * 15; // 15 minutes
+    await user.save();
+
+    res.json({
+      message: 'Reset token generated',
+      resetToken
+    });
+
+  } catch (error) {
+    console.error('FORGOT PASSWORD ERROR:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+// ===== RESET PASSWORD =====
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'All fields required' });
+    }
+
+    const user = await User.findOne({
+      resetToken: token,
+      resetTokenExpiry: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    user.resetToken = null;
+    user.resetTokenExpiry = null;
+
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
+
+  } catch (error) {
+    console.error('RESET PASSWORD ERROR:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 module.exports = router;
