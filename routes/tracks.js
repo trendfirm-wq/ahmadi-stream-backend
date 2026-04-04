@@ -417,7 +417,7 @@ router.get('/momo/status/:ref', auth, async (req, res) => {
     const { ref } = req.params;
 
     const result = await checkPayment(ref);
-
+console.log("MTN STATUS RESPONSE:", result); // 👈 ADD THIS
     const user = await User.findById(req.user.id);
 
     if (!user) {
