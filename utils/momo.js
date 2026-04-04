@@ -35,7 +35,7 @@ async function requestToPay(phone, amount) {
     `${BASE_URL}/collection/v1_0/requesttopay`,
     {
       amount: amount.toString(),
-      currency: "GHS",
+      currency: "EUR",
       externalId: referenceId,
       payer: {
         partyIdType: "MSISDN",
