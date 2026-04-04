@@ -10,6 +10,7 @@ const fs = require('fs');
 console.log("UPLOAD ROUTE HIT");
 const User = require('../models/User');
 const Stream = require('../models/Stream');
+const { requestToPay, checkPayment } = require('../utils/momo');
 
 dotenv.config();
 
@@ -369,9 +370,53 @@ router.get('/behaviour-insights', async (req, res) => {
     res.status(500).json({ error: 'Behaviour insights failed' });
   }
 });
-router.post('/mock-subscribe', auth, async (req, res) => {
+router.post('/momo/pay', auth, async (req, res) => {
   try {
-    const { plan } = req.body;
+    const { phone, plan } = req.body;
+
+    if (!phone || !plan) {
+      return res.status(400).json({ message: 'Phone and plan required' });
+    }
+
+    // Determine amount
+    let amount;
+    if (plan === 'monthly') {
+      amount = 5;
+    } else if (plan === 'yearly') {
+      amount = 50;
+    } else {
+      return res.status(400).json({ message: 'Invalid plan' });
+    }
+
+    // Get user
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initiate payment
+    const referenceId = await requestToPay(phone, amount);
+
+    // (Optional) Save pending payment
+    user.payment_reference = referenceId;
+    user.payment_status = 'pending';
+    await user.save();
+
+    res.json({
+      message: 'MoMo payment request sent. Please approve on your phone.',
+      referenceId
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to initiate payment' });
+  }
+});
+router.get('/momo/status/:ref', auth, async (req, res) => {
+  try {
+    const { ref } = req.params;
+
+    const result = await checkPayment(ref);
 
     const user = await User.findById(req.user.id);
 
@@ -379,29 +424,30 @@ router.post('/mock-subscribe', auth, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    let expiry = new Date();
+    // If payment successful → activate subscription
+    if (result.status === 'SUCCESSFUL') {
 
-    if (plan === 'monthly') {
-      expiry.setMonth(expiry.getMonth() + 1);
-    } else if (plan === 'yearly') {
-      expiry.setFullYear(expiry.getFullYear() + 1);
-    } else {
-      return res.status(400).json({ message: 'Invalid plan' });
+      let expiry = new Date();
+
+      // Adjust based on your pricing
+      if (result.amount === "5") {
+        expiry.setMonth(expiry.getMonth() + 1);
+      } else {
+        expiry.setFullYear(expiry.getFullYear() + 1);
+      }
+
+      user.subscription_status = 'active';
+      user.subscription_expiry = expiry;
+      user.payment_status = 'completed';
+
+      await user.save();
     }
 
-    user.subscription_status = 'active';
-    user.subscription_expiry = expiry;
-
-    await user.save();
-
-    res.json({
-      message: 'Mock subscription activated',
-      expiry
-    });
+    res.json(result);
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Mock payment failed' });
+    res.status(500).json({ message: 'Failed to check payment status' });
   }
 });
 module.exports = router;
