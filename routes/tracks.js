@@ -11,6 +11,7 @@ console.log("UPLOAD ROUTE HIT");
 const User = require('../models/User');
 const Stream = require('../models/Stream');
 const { requestToPay, checkPayment } = require('../utils/momo');
+const { initializePayment, verifyPayment } = require('../utils/paystack');
 
 dotenv.config();
 
@@ -448,6 +449,74 @@ console.log("MTN STATUS RESPONSE:", result); // 👈 ADD THIS
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to check payment status' });
+  }
+});
+router.post('/paystack/pay', auth, async (req, res) => {
+  try {
+    const { email, plan } = req.body;
+
+    if (!email || !plan) {
+      return res.status(400).json({ message: 'Email and plan required' });
+    }
+
+    // 💰 Convert plan → amount
+    let amount;
+
+    if (plan === 'monthly') {
+      amount = 20;
+    } else if (plan === 'yearly') {
+      amount = 200;
+    } else {
+      return res.status(400).json({ message: 'Invalid plan' });
+    }
+
+    const payment = await initializePayment(email, amount);
+
+    res.json({
+      authorization_url: payment.authorization_url,
+      reference: payment.reference
+    });
+
+  } catch (err) {
+    console.error("PAYSTACK INIT ERROR:", err.response?.data || err.message);
+    res.status(500).json({ message: 'Payment init failed' });
+  }
+});
+router.get('/paystack/verify/:reference', auth, async (req, res) => {
+  try {
+    const { reference } = req.params;
+
+    const result = await verifyPayment(reference);
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (result.status === 'success') {
+
+      let expiry = new Date();
+
+      if (result.amount === 2000) {
+        expiry.setMonth(expiry.getMonth() + 1);
+      } else {
+        expiry.setFullYear(expiry.getFullYear() + 1);
+      }
+
+      user.subscription_status = 'active';
+      user.subscription_expiry = expiry;
+
+      await user.save();
+    }
+
+    res.json({
+      status: result.status === 'success' ? "SUCCESSFUL" : "FAILED"
+    });
+
+  } catch (err) {
+    console.error("VERIFY ERROR:", err.response?.data || err.message);
+    res.status(500).json({ message: 'Verification failed' });
   }
 });
 module.exports = router;
