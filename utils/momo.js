@@ -35,7 +35,7 @@ async function requestToPay(phone, amount) {
     `${BASE_URL}/collection/v1_0/requesttopay`,
     {
       amount: amount.toString(),
-      currency: "EUR",
+      currency: "GHS",
       externalId: referenceId,
       payer: {
         partyIdType: "MSISDN",
@@ -67,7 +67,7 @@ async function checkPayment(referenceId) {
     {
       headers: {
         Authorization: `Bearer ${token}`,
-        "X-Target-Environment": "sandbox",
+        "X-Target-Environment": "mtnghana",
         "Ocp-Apim-Subscription-Key": subscriptionKey
       }
     }
