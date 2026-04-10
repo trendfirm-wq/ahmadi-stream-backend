@@ -17,13 +17,14 @@ dotenv.config();
 
 // ===== MULTER CONFIG =====
 const storage = multer.diskStorage({
-    destination: function(req, file, cb) {
-        if (file.fieldname === 'audio') cb(null, 'uploads/audio');
-        else if (file.fieldname === 'cover') cb(null, 'uploads/covers');
-    },
-    filename: function(req, file, cb) {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
+  destination: function(req, file, cb) {
+    if (file.fieldname === 'audio') cb(null, 'uploads/audio');
+    else if (file.fieldname === 'video') cb(null, 'uploads/video'); // ✅ FIXED
+    else if (file.fieldname === 'cover') cb(null, 'uploads/covers');
+  },
+  filename: function(req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
 });
 
 const upload = multer({ storage });
@@ -44,14 +45,15 @@ const auth = (req, res, next) => {
 
 router.post('/upload', upload.fields([
   { name: 'audio', maxCount: 1 },
+  { name: 'video', maxCount: 1 },
   { name: 'cover', maxCount: 1 }
 ]), async (req, res) => {
   try {
-   const { title, artist_name, is_premium, category, featured } = req.body;
+    const { title, artist_name, is_premium, category, featured } = req.body;
 
-    if (!title || !artist_name || !req.files.audio) {
+    if (!title || !artist_name || (!req.files.audio && !req.files.video)) {
       return res.status(400).json({
-        message: 'Title, artist name, and audio are required.'
+        message: 'Title, artist name, and audio or video required.'
       });
     }
 
@@ -61,21 +63,47 @@ router.post('/upload', upload.fields([
     if (!artist) {
       artist = new Artist({ name: artist_name });
       await artist.save();
-      console.log("Created artist:", artist.name);
     }
 
-    // Upload audio to Cloudinary
-    const audioUpload = await cloudinary.uploader.upload(
-      req.files.audio[0].path,
-      {
-        resource_type: "video",
-        folder: "ahmadi-music"
-      }
-    );
+    let fileUrl = "";
+    let finalType = "audio";
+
+    // 🎬 VIDEO
+    if (req.files.video && req.files.video[0]) {
+      const videoUpload = await cloudinary.uploader.upload(
+        req.files.video[0].path,
+        {
+          resource_type: "video",
+          folder: "ahmadi-videos"
+        }
+      );
+
+      fileUrl = videoUpload.secure_url;
+      finalType = "video";
+    }
+
+    // 🎵 AUDIO
+    else if (req.files.audio && req.files.audio[0]) {
+      const audioUpload = await cloudinary.uploader.upload(
+        req.files.audio[0].path,
+        {
+          resource_type: "auto", // ✅ better
+          folder: "ahmadi-music"
+        }
+      );
+
+      fileUrl = audioUpload.secure_url;
+      finalType = "audio";
+    }
+
+    // ❌ STOP if upload failed
+    if (!fileUrl) {
+      return res.status(400).json({ message: "Upload failed" });
+    }
 
     let coverUrl = "";
 
-    if (req.files.cover) {
+    if (req.files.cover && req.files.cover[0]) {
       const coverUpload = await cloudinary.uploader.upload(
         req.files.cover[0].path,
         { folder: "ahmadi-covers" }
@@ -84,19 +112,28 @@ router.post('/upload', upload.fields([
       coverUrl = coverUpload.secure_url;
     }
 
-    // Remove temp files
-    fs.unlinkSync(req.files.audio[0].path);
-    if (req.files.cover) fs.unlinkSync(req.files.cover[0].path);
+    // 🧹 CLEAN FILES
+    if (req.files.audio?.[0]) fs.unlinkSync(req.files.audio[0].path);
+    if (req.files.video?.[0]) fs.unlinkSync(req.files.video[0].path);
+    if (req.files.cover?.[0]) fs.unlinkSync(req.files.cover[0].path);
 
- const track = new Track({
-  artist: artist._id,
-  title,
-  category,
-  file_path: audioUpload.secure_url,
-  cover_image: coverUrl,
-  is_premium: is_premium === 'true',
-  featured: featured === 'true'   // ⭐ NEW LINE
-});
+    const track = new Track({
+      artist: artist._id,
+      title,
+      category,
+      type: finalType,
+
+      file_path: finalType === 'audio' ? fileUrl : "",
+      video_url: finalType === 'video' ? fileUrl : "",
+
+      cover_image: coverUrl,
+
+      // 🔒 FORCE PREMIUM FOR VIDEOS
+      is_premium: finalType === 'video' ? true : is_premium === 'true',
+
+      featured: featured === 'true'
+    });
+
     await track.save();
 
     res.status(201).json({
@@ -110,52 +147,50 @@ router.post('/upload', upload.fields([
   }
 });
 
-router.get('/all', async (req, res) => {
+router.get('/stream/:id', auth, async (req, res) => {
   try {
-    const tracks = await Track.find()
-      .populate('artist', 'name')
-      .sort({ uploaded_at: -1 });
+    const track = await Track.findById(req.params.id);
 
-    res.json(tracks);
+    if (!track) {
+      return res.status(404).json({ message: 'Track not found.' });
+    }
+
+    // 🔒 Premium check
+    if (track.is_premium) {
+      const user = await User.findById(req.user.id);
+
+      if (
+        !user ||
+        user.subscription_status !== 'active' ||
+        (user.subscription_expiry && user.subscription_expiry < new Date())
+      ) {
+        return res.status(403).json({
+          message: 'Subscription required to play this track.'
+        });
+      }
+    }
+
+    // 📈 increment streams
+    track.total_streams += 1;
+    await track.save();
+
+    const mediaUrl =
+      track.type === 'video'
+        ? track.video_url
+        : track.file_path;
+
+    // ❌ safety
+    if (!mediaUrl) {
+      return res.status(400).json({ message: 'Media not available' });
+    }
+
+    res.redirect(mediaUrl);
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch tracks' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
-
-router.get('/stream/:id', auth, async (req, res) => {
-    try {
-        const track = await Track.findById(req.params.id);
-        if (!track) return res.status(404).json({ message: 'Track not found.' });
-
-        // If premium — check subscription
-        if (track.is_premium) {
-
-            const user = await User.findById(req.user.id);
-
-            if (
-                !user ||
-                user.subscription_status !== 'active' ||
-                (user.subscription_expiry && user.subscription_expiry < new Date())
-            ) {
-                return res.status(403).json({
-                    message: 'Subscription required to play this track.'
-                });
-            }
-        }
-
-        // Increment streams
-        track.total_streams += 1;
-        await track.save();
-
-        res.redirect(track.file_path);
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
 router.get('/create-test-artist', async (req, res) => {
   const artist = new Artist({
     name: "Test Artist",
