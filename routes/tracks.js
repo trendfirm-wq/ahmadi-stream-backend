@@ -406,6 +406,18 @@ router.get('/behaviour-insights', async (req, res) => {
     res.status(500).json({ error: 'Behaviour insights failed' });
   }
 });
+router.get('/all', async (req, res) => {
+  try {
+    const tracks = await Track.find()
+      .populate('artist', 'name')
+      .sort({ uploaded_at: -1 });
+
+    res.json(tracks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch tracks' });
+  }
+});
 router.post('/momo/pay', auth, async (req, res) => {
   try {
     const { phone, plan } = req.body;
