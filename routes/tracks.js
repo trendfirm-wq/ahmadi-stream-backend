@@ -50,6 +50,22 @@ router.post('/upload', upload.fields([
 ]), async (req, res) => {
   try {
     const { title, artist_name, is_premium, category, featured } = req.body;
+// 🔥 CATEGORY MAPPING (CRITICAL)
+const categoryMap = {
+  'Old Nasheed': 'nazm',
+  'Latest Nasheed': 'nasheed',
+  'Centenary': 'qaseeda'
+};
+
+let normalizedCategory = categoryMap[category] || category;
+
+// fallback normalize (for others like "Tabligh Songs")
+normalizedCategory = normalizedCategory
+  ?.toLowerCase()
+  .trim()
+  .replace(/\s+/g, '_');
+
+
 
     if (!title || !artist_name || (!req.files.audio && !req.files.video)) {
       return res.status(400).json({
@@ -120,7 +136,7 @@ router.post('/upload', upload.fields([
     const track = new Track({
       artist: artist._id,
       title,
-      category,
+     category: normalizedCategory, // ✅ FIXED
       type: finalType,
 
       file_path: finalType === 'audio' ? fileUrl : "",

@@ -1,51 +1,84 @@
 const mongoose = require('mongoose');
 
 const trackSchema = new mongoose.Schema({
-    artist: { type: mongoose.Schema.Types.ObjectId, ref: 'Artist', required: true },
-    title: { type: String, required: true },
+  artist: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Artist',
+    required: true
+  },
 
-    category: {
-        type: String,
-        enum: [
-            'Akomanyi',
-            'Saani',
-            'Nazm',
-            'Nasheeds',
-            'Qaseedas',
-            'Tabligh Songs',
-            'Poetry',
-            'Speeches',
-            'Event Recordings',
-            'Zainab',
-            'Farouk',
-            'Prayer',
-            'Dua'
-        ],
-        default: 'Nasheeds'
-    },
+  title: {
+    type: String,
+    required: true
+  },
 
-    // 🔥 NEW → TYPE (audio or video)
-    type: {
-        type: String,
-        enum: ['audio', 'video'],
-        default: 'audio'
-    },
+  // ✅ FIXED CATEGORY (LOWERCASE SYSTEM)
+  category: {
+    type: String,
+    enum: [
+      'akomanyi',
+      'saani',
+      'nazm',              // Old Nasheed
+      'nasheed',           // Latest Nasheed
+      'qaseeda',           // Centenary
+      'tabligh_songs',
+      'poetry',
+      'speech',
+      'event_recordings',
+      'zainab',
+      'farouk',
+      'prayer',
+      'dua'
+    ],
+    required: true
+  },
 
-    // 🎵 AUDIO
-    file_path: { type: String },
+  // 🎬 TYPE
+  type: {
+    type: String,
+    enum: ['audio', 'video'],
+    default: 'audio'
+  },
 
-    // 🎬 VIDEO
-    video_url: { type: String },
+  // 🎵 AUDIO FILE
+  file_path: {
+    type: String
+  },
 
-    cover_image: { type: String, default: '' },
+  // 🎬 VIDEO FILE
+  video_url: {
+    type: String
+  },
 
-    is_premium: { type: Boolean, default: false },
+  // 🖼 COVER
+  cover_image: {
+    type: String,
+    default: ''
+  },
 
-    total_streams: { type: Number, default: 0 },
+  // 💎 PREMIUM
+  is_premium: {
+    type: Boolean,
+    default: false
+  },
 
-    featured: { type: Boolean, default: false },
+  // 📊 STATS
+  total_streams: {
+    type: Number,
+    default: 0
+  },
 
-    uploaded_at: { type: Date, default: Date.now }
+  // ⭐ FEATURED
+  featured: {
+    type: Boolean,
+    default: false
+  },
+
+  // ⏱ DATE
+  uploaded_at: {
+    type: Date,
+    default: Date.now
+  }
 });
 
 module.exports = mongoose.model('Track', trackSchema);
