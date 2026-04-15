@@ -589,7 +589,6 @@ router.get('/paystack/verify/:reference', auth, async (req, res) => {
     res.status(500).json({ message: 'Verification failed' });
   }
 });
-// ✅ PUT FUNCTION HERE
 async function activateUserSubscription(email, amount) {
 
   let plan;
@@ -617,9 +616,9 @@ async function activateUserSubscription(email, amount) {
     { email },
     {
       subscription_status: 'active',
-      subscription_expiry: expiry,
-      plan,
-      subscribedAt: new Date()
+      plan_type: plan,              // ✅ FIXED
+      subscription_start: new Date(), // ✅ FIXED
+      subscription_expiry: expiry
     }
   );
 
