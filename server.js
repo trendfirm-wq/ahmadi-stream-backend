@@ -18,10 +18,19 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+
+// ✅ FIXED JSON (VERY IMPORTANT FOR WEBHOOK)
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
+
 app.use('/uploads', express.static('uploads'));
 
-// Root Route (Prevents "Cannot GET /")
+// Root Route
 app.get('/', (req, res) => {
   res.status(200).json({
     message: 'Ahmadi Stream Backend is Live 🚀',
@@ -39,5 +48,5 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running on port ${PORT}`);
-  await createAdmin(); // creates admin automatically
+  await createAdmin();
 });

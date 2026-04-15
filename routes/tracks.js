@@ -12,7 +12,8 @@ const User = require('../models/User');
 const Stream = require('../models/Stream');
 const { requestToPay, checkPayment } = require('../utils/momo');
 const { initializePayment, verifyPayment } = require('../utils/paystack');
-
+const crypto = require('crypto');
+ 
 dotenv.config();
 
 // ===== MULTER CONFIG =====
@@ -586,6 +587,82 @@ router.get('/paystack/verify/:reference', auth, async (req, res) => {
   } catch (err) {
     console.error("VERIFY ERROR:", err.response?.data || err.message);
     res.status(500).json({ message: 'Verification failed' });
+  }
+});
+// ✅ PUT FUNCTION HERE
+async function activateUserSubscription(email, amount) {
+
+  let plan;
+  let expiry = new Date();
+
+  if (amount === 2000) {
+    plan = 'monthly';
+    expiry.setMonth(expiry.getMonth() + 1);
+  } 
+  else if (amount === 5500) {
+    plan = 'quarterly';
+    expiry.setMonth(expiry.getMonth() + 3);
+  } 
+  else if (amount === 20000) {
+    plan = 'yearly';
+    expiry.setFullYear(expiry.getFullYear() + 1);
+  }
+
+  if (!plan) {
+    console.log("❌ Unknown amount:", amount);
+    return;
+  }
+
+  await User.findOneAndUpdate(
+    { email },
+    {
+      subscription_status: 'active',
+      subscription_expiry: expiry,
+      plan,
+      subscribedAt: new Date()
+    }
+  );
+
+  console.log("🎉 User upgraded:", email, plan);
+}
+router.post('/paystack/webhook', async (req, res) => {
+  try {
+    const secret = process.env.PAYSTACK_SECRET_KEY;
+
+    const hash = crypto
+      .createHmac('sha512', secret)
+      .update(req.rawBody)
+      .digest('hex');
+
+    if (hash !== req.headers['x-paystack-signature']) {
+      return res.status(401).send('Invalid signature');
+    }
+
+    const event = req.body;
+console.log("Webhook event:", event.event);
+
+ if (event.event === 'charge.success') {
+  const data = event.data;
+
+  const email = data.customer.email;
+  const amount = data.amount;
+
+  // 🔒 PREVENT DOUBLE PROCESSING
+  const existingUser = await User.findOne({ email });
+
+  if (existingUser?.subscription_status === 'active') {
+    console.log("⚠️ Already active:", email);
+    return res.sendStatus(200); // ✅ VERY IMPORTANT
+  }
+
+  // 🔥 ACTIVATE SUBSCRIPTION
+  await activateUserSubscription(email, amount);
+}
+    res.sendStatus(200);
+
+  } catch (err) {
+    console.error("Webhook error:", err);
+    res.sendStatus(500);
   }
 });
 module.exports = router;
