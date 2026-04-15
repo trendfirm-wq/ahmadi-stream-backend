@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['monthly', 'quarterly', 'yearly'],
     default: null
-}
+},
 
     subscription_start: {
         type: Date,
