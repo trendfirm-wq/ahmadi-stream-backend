@@ -649,10 +649,13 @@ console.log("Webhook event:", event.event);
   // 🔒 PREVENT DOUBLE PROCESSING
   const existingUser = await User.findOne({ email });
 
-  if (existingUser?.subscription_status === 'active') {
-    console.log("⚠️ Already active:", email);
-    return res.sendStatus(200); // ✅ VERY IMPORTANT
-  }
+  if (
+  existingUser?.subscription_status === 'active' &&
+  existingUser?.plan_type
+) {
+  console.log("⚠️ Already active:", email);
+  return res.sendStatus(200);
+}
 
   // 🔥 ACTIVATE SUBSCRIPTION
   await activateUserSubscription(email, amount);
