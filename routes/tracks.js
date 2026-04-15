@@ -583,9 +583,39 @@ router.get('/paystack/verify/:reference', auth, async (req, res) => {
       await user.save();
     }
 
-    res.json({
-      status: result.status === 'success' ? "SUCCESSFUL" : "FAILED"
-    });
+    if (result.status === 'success') {
+
+  let expiry = new Date();
+
+  if (result.amount === 2000) {
+    expiry.setMonth(expiry.getMonth() + 1);
+  } else {
+    expiry.setFullYear(expiry.getFullYear() + 1);
+  }
+
+  user.subscription_status = 'active';
+  user.subscription_expiry = expiry;
+
+  await user.save();
+
+  // 🔥 CREATE NEW TOKEN (THIS IS THE FIX)
+  const token = jwt.sign(
+    {
+      id: user._id,
+      email: user.email,
+      subscription_status: user.subscription_status
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  return res.json({
+    status: "SUCCESSFUL",
+    token // 🔥 SEND NEW TOKEN
+  });
+}
+
+res.json({ status: "FAILED" });
 
   } catch (err) {
     console.error("VERIFY ERROR:", err.response?.data || err.message);
