@@ -622,8 +622,6 @@ async function activateUserSubscription(email, amount) {
     }
   );
 
-  console.log("🎉 User upgraded:", email, plan);
-}
 router.post('/paystack/webhook', async (req, res) => {
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY;
@@ -638,28 +636,59 @@ router.post('/paystack/webhook', async (req, res) => {
     }
 
     const event = req.body;
-console.log("Webhook event:", event.event);
 
- if (event.event === 'charge.success') {
-  const data = event.data;
+    console.log("Webhook event:", event.event);
 
-  const email = data.customer.email;
-  const amount = data.amount;
+    if (event.event === 'charge.success') {
+      const data = event.data;
 
-  // 🔒 PREVENT DOUBLE PROCESSING
-  const existingUser = await User.findOne({ email });
+      const email = data.customer.email;
+      const amount = data.amount;
+      const reference = data.reference;
 
-  if (
-  existingUser?.subscription_status === 'active' &&
-  existingUser?.plan_type
-) {
-  console.log("⚠️ Already active:", email);
-  return res.sendStatus(200);
-}
+      // 🔒 PREVENT DUPLICATE PROCESSING
+      const existingUser = await User.findOne({ email });
 
-  // 🔥 ACTIVATE SUBSCRIPTION
-  await activateUserSubscription(email, amount);
-}
+      if (existingUser?.payment_reference === reference) {
+        console.log("⚠️ Duplicate webhook:", reference);
+        return res.sendStatus(200);
+      }
+
+      // 🔥 DETERMINE PLAN
+      let plan;
+
+      if (amount === 2000) plan = 'monthly';
+      else if (amount === 5500) plan = 'quarterly';
+      else if (amount === 20000) plan = 'yearly';
+
+      if (!plan) {
+        console.log("❌ Unknown amount:", amount);
+        return res.sendStatus(200);
+      }
+
+      // 🔥 CALCULATE EXPIRY
+      const now = new Date();
+      let expiry = new Date();
+
+      if (plan === 'monthly') expiry.setMonth(now.getMonth() + 1);
+      if (plan === 'quarterly') expiry.setMonth(now.getMonth() + 3);
+      if (plan === 'yearly') expiry.setFullYear(now.getFullYear() + 1);
+
+      // 🔥 UPDATE USER (SUPPORTS UPGRADES)
+      await User.findOneAndUpdate(
+        { email },
+        {
+          subscription_status: 'active',
+          plan_type: plan,
+          subscription_start: now,
+          subscription_expiry: expiry,
+          payment_reference: reference
+        }
+      );
+
+      console.log("🎉 Subscription updated:", email, plan);
+    }
+
     res.sendStatus(200);
 
   } catch (err) {
@@ -667,4 +696,5 @@ console.log("Webhook event:", event.event);
     res.sendStatus(500);
   }
 });
+
 module.exports = router;
