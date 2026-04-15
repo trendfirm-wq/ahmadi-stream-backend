@@ -19,10 +19,10 @@ const userSchema = new mongoose.Schema({
     },
 
     plan_type: {
-        type: String,
-        enum: ['monthly', 'yearly', null],
-        default: null
-    },
+    type: String,
+    enum: ['monthly', 'quarterly', 'yearly'],
+    default: null
+}
 
     subscription_start: {
         type: Date,
