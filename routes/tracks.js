@@ -621,7 +621,7 @@ async function activateUserSubscription(email, amount) {
       subscription_expiry: expiry
     }
   );
-
+} // ✅ CLOSE FUNCTION
 router.post('/paystack/webhook', async (req, res) => {
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY;
