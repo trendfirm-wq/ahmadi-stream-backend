@@ -522,16 +522,22 @@ router.post('/paystack/pay', auth, async (req, res) => {
       return res.status(400).json({ message: 'Email and plan required' });
     }
 
-    // 💰 Convert plan → amount
-    let amount;
+    // 💰 Centralized pricing (clean + scalable)
+    const prices = {
+      monthly: 20,
+      quarterly: 55,
+      yearly: 200,
+    };
 
-    if (plan === 'monthly') {
-      amount = 20;
-    } else if (plan === 'yearly') {
-      amount = 200;
-    } else {
+    const amount = prices[plan];
+
+    if (!amount) {
       return res.status(400).json({ message: 'Invalid plan' });
     }
+
+    // 🔍 Debug (optional but useful)
+    console.log("PLAN:", plan);
+    console.log("AMOUNT (GHS):", amount);
 
     const payment = await initializePayment(email, amount);
 
