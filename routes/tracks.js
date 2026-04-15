@@ -540,7 +540,10 @@ router.post('/paystack/pay', auth, async (req, res) => {
     console.log("PLAN:", plan);
     console.log("AMOUNT (GHS):", amount);
 
-    const payment = await initializePayment(email, amount);
+   const payment = await initializePayment(email, amount, {
+  userId: req.user.id,
+  plan
+});
 
     res.json({
       authorization_url: payment.authorization_url,
@@ -657,9 +660,11 @@ router.post('/paystack/webhook', async (req, res) => {
       // 🔥 DETERMINE PLAN
       let plan;
 
-      if (amount === 2000) plan = 'monthly';
-      else if (amount === 5500) plan = 'quarterly';
-      else if (amount === 20000) plan = 'yearly';
+     if (amount === 2000) plan = 'monthly';
+else if (amount === 5500) plan = 'quarterly';
+else if (amount === 20000) plan = 'yearly';
+
+plan = plan?.toLowerCase().trim();
 
       if (!plan) {
         console.log("❌ Unknown amount:", amount);
@@ -679,7 +684,7 @@ router.post('/paystack/webhook', async (req, res) => {
         { email },
         {
           subscription_status: 'active',
-          plan_type: plan,
+          plan_type: plan.toLowerCase().trim(),
           subscription_start: now,
           subscription_expiry: expiry,
           payment_reference: reference

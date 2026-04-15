@@ -3,12 +3,13 @@ const axios = require('axios');
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 
 // 🔑 Initialize payment
-async function initializePayment(email, amount) {
+async function initializePayment(email, amount, metadata = {}) {
   const res = await axios.post(
     'https://api.paystack.co/transaction/initialize',
     {
       email,
-      amount: amount * 100, // convert to kobo/pesewas
+      amount: amount * 100,
+      metadata // 🔥 THIS IS THE FIX
     },
     {
       headers: {
