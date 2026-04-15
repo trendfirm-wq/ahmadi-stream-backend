@@ -640,59 +640,53 @@ router.post('/paystack/webhook', async (req, res) => {
 
     const event = req.body;
 
-    console.log("Webhook event:", event.event);
+    
 
-    if (event.event === 'charge.success') {
-      const data = event.data;
+if (event.event === 'charge.success') {
+  const data = event.data;
 
-      const email = data.customer.email;
-      const amount = data.amount;
-      const reference = data.reference;
+  const reference = data.reference;
 
-      // 🔒 PREVENT DUPLICATE PROCESSING
-      const existingUser = await User.findOne({ email });
+  // 🔥 GET FROM METADATA (CRITICAL FIX)
+  const userId = data.metadata?.userId;
+  let plan = data.metadata?.plan;
 
-      if (existingUser?.payment_reference === reference) {
-        console.log("⚠️ Duplicate webhook:", reference);
-        return res.sendStatus(200);
-      }
+  console.log("Webhook event:", event.event);
 
-      // 🔥 DETERMINE PLAN
-      let plan;
+  if (!userId || !plan) {
+    console.log("❌ Missing metadata:", data.metadata);
+    return res.sendStatus(200);
+  }
 
-     if (amount === 2000) plan = 'monthly';
-else if (amount === 5500) plan = 'quarterly';
-else if (amount === 20000) plan = 'yearly';
+  plan = plan.toLowerCase().trim();
 
-plan = plan?.toLowerCase().trim();
+  // 🔒 PREVENT DUPLICATE PROCESSING
+  const existingUser = await User.findById(userId);
 
-      if (!plan) {
-        console.log("❌ Unknown amount:", amount);
-        return res.sendStatus(200);
-      }
+  if (existingUser?.payment_reference === reference) {
+    console.log("⚠️ Duplicate webhook:", reference);
+    return res.sendStatus(200);
+  }
 
-      // 🔥 CALCULATE EXPIRY
-      const now = new Date();
-      let expiry = new Date();
+  // 🔥 CALCULATE EXPIRY
+  const now = new Date();
+  let expiry = new Date();
 
-      if (plan === 'monthly') expiry.setMonth(now.getMonth() + 1);
-      if (plan === 'quarterly') expiry.setMonth(now.getMonth() + 3);
-      if (plan === 'yearly') expiry.setFullYear(now.getFullYear() + 1);
+  if (plan === 'monthly') expiry.setMonth(now.getMonth() + 1);
+  if (plan === 'quarterly') expiry.setMonth(now.getMonth() + 3);
+  if (plan === 'yearly') expiry.setFullYear(now.getFullYear() + 1);
 
-      // 🔥 UPDATE USER (SUPPORTS UPGRADES)
-      await User.findOneAndUpdate(
-        { email },
-        {
-          subscription_status: 'active',
-          plan_type: plan.toLowerCase().trim(),
-          subscription_start: now,
-          subscription_expiry: expiry,
-          payment_reference: reference
-        }
-      );
+  // 🔥 UPDATE CORRECT USER
+  await User.findByIdAndUpdate(userId, {
+    subscription_status: 'active',
+    plan_type: plan,
+    subscription_start: now,
+    subscription_expiry: expiry,
+    payment_reference: reference
+  });
 
-      console.log("🎉 Subscription updated:", email, plan);
-    }
+  console.log("🎉 Correct user updated:", userId, plan);
+}
 
     res.sendStatus(200);
 
