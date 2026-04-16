@@ -4,9 +4,7 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 
 const User = require('../models/User');
-const Payment = require('../models/Payment');
-console.log("🔥 HUBTEL PAY HIT");
-console.log("BODY:", req.body);
+
 console.log("USER:", req.user);
 // AUTH
 const auth = (req, res, next) => {
@@ -28,71 +26,74 @@ const PRICES = {
   yearly: 200,
 };
 
-// INIT PAYMENT
-router.post('/pay', auth, async (req, res) => {
+router.post('/hubtel/pay', auth, async (req, res) => {
   try {
+    console.log("🔥 HUBTEL PAY HIT");
+    console.log("BODY:", req.body); // ✅ correct place
+
     const { phone, plan } = req.body;
 
     if (!phone || !plan) {
-      return res.status(400).json({ message: "phone & plan required" });
+      return res.status(400).json({ message: 'Phone and plan required' });
     }
 
-    const amount = PRICES[plan];
-    if (!amount) return res.status(400).json({ message: "Invalid plan" });
+    const prices = {
+      monthly: 5,
+      yearly: 50
+    };
+
+    const amount = prices[plan];
+
+    if (!amount) {
+      return res.status(400).json({ message: 'Invalid plan' });
+    }
 
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
     const reference = `HUBTEL_${Date.now()}_${user._id}`;
 
     user.plan_type = plan;
     user.payment_reference = reference;
-    user.payment_status = "pending";
+    user.payment_status = 'pending';
     await user.save();
-
-    await Payment.create({
-      user: user._id,
-      amount,
-      plan,
-      payment_reference: reference,
-      status: "pending",
-      provider: "hubtel"
-    });
 
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
-    ).toString("base64");
+    ).toString('base64');
 
-    const hubtelRes = await axios.post(
-      `${process.env.BASE_URL}/merchant-account/merchants/transactions/initiate`,
+    const response = await axios.post(
+      `https://api.hubtel.com/v1/merchantaccount/merchants/transactions/initiate`,
       {
         totalAmount: amount,
         description: `${plan} subscription`,
         callbackUrl: process.env.HUBTEL_CALLBACK_URL,
         customerMsisdn: phone,
         clientReference: reference,
-        channel: "momo"
+        channel: 'momo'
       },
       {
         headers: {
           Authorization: `Basic ${authHeader}`,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json'
         }
       }
     );
 
-    res.json({
+    return res.json({
       success: true,
       reference,
-      hubtel: hubtelRes.data
+      hubtel: response.data
     });
 
   } catch (err) {
-    console.log(err.response?.data || err.message);
-    res.status(500).json({ message: "Hubtel init failed" });
+    console.error("🔥 HUBTEL ERROR:", err.response?.data || err.message);
+    return res.status(500).json({ message: 'Payment failed' });
   }
 });
-
 // CALLBACK
 router.post('/callback', async (req, res) => {
   try {
