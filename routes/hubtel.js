@@ -44,101 +44,52 @@ const PRICES = {
   yearly: 200,
 };
 
-// =========================
-// INITIATE PAYMENT
-// =========================
-router.post('/pay', auth, async (req, res) => {
+router.post("/hubtel/pay", auth, async (req, res) => {
   try {
-    console.log("🔥 HUBTEL PAY HIT");
-    console.log("BODY:", req.body);
+    const { amount, plan, phone } = req.body;
 
-    const { phone, plan } = req.body;
-
-    if (!phone || !plan) {
-      return res.status(400).json({ message: 'Phone and plan required' });
-    }
-
-    const amount = PRICES[plan];
-
-    if (!amount) {
-      return res.status(400).json({ message: 'Invalid plan selected' });
-    }
-
-    // =========================
-    // FIND USER
-    // =========================
-    const user = await User.findById(req.user.id);
-
-    if (!user) {
-      return res.status(404).json({
-        message: 'User not found',
-        debug: req.user
-      });
-    }
-
-    // =========================
-    // CREATE REFERENCE
-    // =========================
-    const reference = `HUBTEL_${Date.now()}_${user._id}`;
-
-    user.plan_type = plan;
-    user.payment_reference = reference;
-    user.payment_status = 'pending';
-    await user.save();
-
-    await Payment.create({
-      user: user._id,
-      amount,
-      plan,
-      payment_reference: reference,
-      status: 'pending',
-      provider: 'hubtel'
-    });
-
-    // =========================
-    // HUBTEL AUTH
-    // =========================
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
-    ).toString('base64');
+    ).toString("base64");
 
-    // =========================
-    // ⚠️ FIXED HUBTEL ENDPOINT
-    // =========================
+    const reference = `INV_${Date.now()}`;
+
     const response = await axios.post(
-      `https://api.hubtel.com/v1/merchantaccount/merchants/transactions/initiate`,
+      "https://payproxyapi.hubtel.com/items/initiate",
       {
         totalAmount: amount,
         description: `${plan} subscription`,
         callbackUrl: process.env.HUBTEL_CALLBACK_URL,
-        customerMsisdn: phone,
-        clientReference: reference,
-        channel: 'momo'
+        returnUrl: `${process.env.BASE_URL}/success`,
+        cancellationUrl: `${process.env.BASE_URL}/cancel`,
+        merchantAccountNumber: process.env.HUBTEL_MERCHANT_ID,
+        clientReference: reference
       },
       {
         headers: {
           Authorization: `Basic ${authHeader}`,
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json"
         }
       }
     );
 
-    return res.json({
+    console.log("HUBTEL RESPONSE:", response.data);
+
+    res.json({
       success: true,
-      reference,
-      hubtel: response.data
+      paymentUrl: response.data.data.checkoutUrl || response.data.checkoutUrl,
+      reference
     });
 
   } catch (err) {
-    console.error("🔥 HUBTEL ERROR:", err.response?.data || err.message);
+    console.log("HUBTEL ERROR:", err.response?.data || err.message);
 
-    return res.status(500).json({
-      message: 'Payment initiation failed',
+    res.status(500).json({
+      message: "Payment initiation failed",
       error: err.response?.data || err.message
     });
   }
 });
-
 // =========================
 // CALLBACK
 // =========================
