@@ -60,7 +60,8 @@ router.post('/pay', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid plan selected' });
     }
 
-    const user = await User.findById(req.user.id);
+    const userId = req.user.id || req.user._id || req.user.userId;
+const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
