@@ -7,7 +7,7 @@ const User = require('../models/User');
 const Payment = require('../models/Payment');
 
 // =========================
-// AUTH MIDDLEWARE
+// AUTH MIDDLEWARE (FIXED)
 // =========================
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -19,11 +19,15 @@ const auth = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // ✅ FIX: normalize user id
+    // 🔥 SAFE NORMALIZATION
     req.user = {
-      id: decoded._id || decoded.id,
+      id: decoded.id || decoded._id,
       email: decoded.email
     };
+
+    if (!req.user.id) {
+      return res.status(401).json({ message: 'Invalid token payload (missing id)' });
+    }
 
     next();
   } catch (err) {
@@ -60,17 +64,17 @@ router.post('/pay', auth, async (req, res) => {
       return res.status(400).json({ message: 'Invalid plan selected' });
     }
 
-  const userId = req.user.id;
+    // =========================
+    // FIND USER
+    // =========================
+    const user = await User.findById(req.user.id);
 
-const user = await User.findById(userId);
-
-if (!user) {
-  return res.status(404).json({
-    message: 'User not found',
-    debug: req.user
-  });
-}
- 
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+        debug: req.user
+      });
+    }
 
     // =========================
     // CREATE REFERENCE
@@ -99,10 +103,10 @@ if (!user) {
     ).toString('base64');
 
     // =========================
-    // HUBTEL REQUEST
+    // ⚠️ FIXED HUBTEL ENDPOINT
     // =========================
     const response = await axios.post(
-      `https://api.hubtel.com/v1/merchant-account/merchants/transactions/initiate`,
+      `https://api.hubtel.com/v1/merchantaccount/merchants/transactions/initiate`,
       {
         totalAmount: amount,
         description: `${plan} subscription`,
@@ -142,20 +146,14 @@ router.post('/callback', async (req, res) => {
   try {
     const { clientReference, status } = req.body;
 
-    if (!clientReference) {
-      return res.sendStatus(200);
-    }
+    if (!clientReference) return res.sendStatus(200);
 
     const user = await User.findOne({ payment_reference: clientReference });
     const payment = await Payment.findOne({ payment_reference: clientReference });
 
-    if (!user || !payment) {
-      return res.sendStatus(200);
-    }
+    if (!user || !payment) return res.sendStatus(200);
 
-    if (payment.status === 'approved') {
-      return res.sendStatus(200);
-    }
+    if (payment.status === 'approved') return res.sendStatus(200);
 
     const cleanStatus = status?.toLowerCase();
 
@@ -201,7 +199,7 @@ router.get('/status/:ref', auth, async (req, res) => {
     ).toString('base64');
 
     const response = await axios.get(
-      `https://api.hubtel.com/v1/merchant-account/merchants/transactions/${req.params.ref}`,
+      `https://api.hubtel.com/v1/merchantaccount/merchants/transactions/${req.params.ref}`,
       {
         headers: {
           Authorization: `Basic ${authHeader}`

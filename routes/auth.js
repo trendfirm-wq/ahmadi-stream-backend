@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const dotenv = require('dotenv');
 const auth = require('../middleware/auth');
+const crypto = require('crypto');
 dotenv.config();
 
 
@@ -69,19 +70,17 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: 'Invalid email or password.' });
         }
 
-        // Create JWT payload (⭐ includes role)
         const payload = {
-            id: user._id,
-            full_name: user.full_name,
-            email: user.email,
-            role: user.role,
-            subscription_status: user.subscription_status
-        };
+  id: user._id,
+  full_name: user.full_name,
+  email: user.email,
+  role: user.role,
+  subscription_status: user.subscription_status
+};
 
-        const token = jwt.sign(payload, process.env.JWT_SECRET, {
-            expiresIn: '7d'
-        });
-
+const token = jwt.sign(payload, process.env.JWT_SECRET, {
+  expiresIn: '7d'
+});
         res.json({
             message: 'Login successful!',
             token
@@ -94,7 +93,7 @@ router.post('/login', async (req, res) => {
 });
  
 // ===== CHANGE PASSWORD =====
-router.post('/change-password', authMiddleware, async (req, res) => {
+router.post('/change-password', auth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
