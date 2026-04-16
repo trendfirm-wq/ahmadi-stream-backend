@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const trackSchema = new mongoose.Schema({
+
   artist: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Artist',
@@ -9,18 +10,18 @@ const trackSchema = new mongoose.Schema({
 
   title: {
     type: String,
-    required: true
+    required: true,
+    trim: true
   },
 
-  // ✅ FIXED CATEGORY (LOWERCASE SYSTEM)
   category: {
     type: String,
     enum: [
       'akomanyi',
       'saani',
-      'nazm',              // Old Nasheed
-      'nasheed',           // Latest Nasheed
-      'qaseeda',           // Centenary
+      'nazm',
+      'nasheed',
+      'qaseeda',
       'tabligh_songs',
       'poetry',
       'speech',
@@ -30,55 +31,49 @@ const trackSchema = new mongoose.Schema({
       'prayer',
       'dua'
     ],
-    required: true
+    required: true,
+    index: true
   },
 
-  // 🎬 TYPE
   type: {
     type: String,
     enum: ['audio', 'video'],
     default: 'audio'
   },
 
-  // 🎵 AUDIO FILE
   file_path: {
     type: String
   },
 
-  // 🎬 VIDEO FILE
   video_url: {
     type: String
   },
 
-  // 🖼 COVER
   cover_image: {
     type: String,
     default: ''
   },
 
-  // 💎 PREMIUM
   is_premium: {
     type: Boolean,
-    default: false
+    default: false,
+    index: true
   },
 
-  // 📊 STATS
   total_streams: {
     type: Number,
-    default: 0
+    default: 0,
+    index: true
   },
 
-  // ⭐ FEATURED
   featured: {
     type: Boolean,
-    default: false
-  },
-
-  // ⏱ DATE
-  uploaded_at: {
-    type: Date,
-    default: Date.now
+    default: false,
+    index: true
   }
+
+}, {
+  timestamps: true
 });
 
 module.exports = mongoose.model('Track', trackSchema);
