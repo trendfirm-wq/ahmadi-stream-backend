@@ -4,14 +4,17 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 
 const User = require('../models/User');
-const Payment = require('../models/Payment'); // ✅ YOU WERE MISSING THIS
+const Payment = require('../models/Payment');
 
 // =========================
 // AUTH MIDDLEWARE
 // =========================
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'No token' });
+
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -32,9 +35,9 @@ const PRICES = {
 };
 
 // =========================
-// INITIATE HUBTEL PAYMENT
+// INITIATE PAYMENT
 // =========================
-router.post('/hubtel/pay', auth, async (req, res) => {
+router.post('/pay', auth, async (req, res) => {
   try {
     console.log("🔥 HUBTEL PAY HIT");
     console.log("BODY:", req.body);
@@ -48,7 +51,7 @@ router.post('/hubtel/pay', auth, async (req, res) => {
     const amount = PRICES[plan];
 
     if (!amount) {
-      return res.status(400).json({ message: 'Invalid plan' });
+      return res.status(400).json({ message: 'Invalid plan selected' });
     }
 
     const user = await User.findById(req.user.id);
@@ -58,11 +61,11 @@ router.post('/hubtel/pay', auth, async (req, res) => {
     }
 
     // =========================
-    // CREATE REFERENCE
+    // CREATE UNIQUE REFERENCE
     // =========================
     const reference = `HUBTEL_${Date.now()}_${user._id}`;
 
-    // Save user intent
+    // Save user payment intent
     user.plan_type = plan;
     user.payment_reference = reference;
     user.payment_status = 'pending';
@@ -86,10 +89,10 @@ router.post('/hubtel/pay', auth, async (req, res) => {
     ).toString('base64');
 
     // =========================
-    // CALL HUBTEL API
+    // HUBTEL REQUEST
     // =========================
     const response = await axios.post(
-      `https://api.hubtel.com/v1/merchantaccount/merchants/transactions/initiate`,
+      `https://api.hubtel.com/v1/merchant-account/merchants/transactions/initiate`,
       {
         totalAmount: amount,
         description: `${plan} subscription`,
@@ -116,7 +119,7 @@ router.post('/hubtel/pay', auth, async (req, res) => {
     console.error("🔥 HUBTEL ERROR:", err.response?.data || err.message);
 
     return res.status(500).json({
-      message: 'Payment failed',
+      message: 'Payment initiation failed',
       error: err.response?.data || err.message
     });
   }
@@ -125,18 +128,24 @@ router.post('/hubtel/pay', auth, async (req, res) => {
 // =========================
 // CALLBACK (HUBTEL WEBHOOK)
 // =========================
-router.post('/hubtel/callback', async (req, res) => {
+router.post('/callback', async (req, res) => {
   try {
     const { clientReference, status } = req.body;
 
-    if (!clientReference) return res.sendStatus(200);
+    if (!clientReference) {
+      return res.sendStatus(200);
+    }
 
     const user = await User.findOne({ payment_reference: clientReference });
     const payment = await Payment.findOne({ payment_reference: clientReference });
 
-    if (!user || !payment) return res.sendStatus(200);
+    if (!user || !payment) {
+      return res.sendStatus(200);
+    }
 
-    if (payment.status === 'approved') return res.sendStatus(200);
+    if (payment.status === 'approved') {
+      return res.sendStatus(200);
+    }
 
     const cleanStatus = status?.toLowerCase();
 
@@ -146,13 +155,9 @@ router.post('/hubtel/callback', async (req, res) => {
 
       if (user.plan_type === 'monthly') {
         expiry.setMonth(expiry.getMonth() + 1);
-      }
-
-      if (user.plan_type === 'quarterly') {
+      } else if (user.plan_type === 'quarterly') {
         expiry.setMonth(expiry.getMonth() + 3);
-      }
-
-      if (user.plan_type === 'yearly') {
+      } else if (user.plan_type === 'yearly') {
         expiry.setFullYear(expiry.getFullYear() + 1);
       }
 
@@ -177,16 +182,16 @@ router.post('/hubtel/callback', async (req, res) => {
 });
 
 // =========================
-// STATUS CHECK (HUBTEL)
+// STATUS CHECK
 // =========================
-router.get('/hubtel/status/:ref', auth, async (req, res) => {
+router.get('/status/:ref', auth, async (req, res) => {
   try {
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
-    ).toString("base64");
+    ).toString('base64');
 
     const response = await axios.get(
-      `https://api.hubtel.com/v1/merchantaccount/merchants/transactions/${req.params.ref}`,
+      `https://api.hubtel.com/v1/merchant-account/merchants/transactions/${req.params.ref}`,
       {
         headers: {
           Authorization: `Basic ${authHeader}`
@@ -200,7 +205,7 @@ router.get('/hubtel/status/:ref', auth, async (req, res) => {
     console.error("STATUS ERROR:", err.response?.data || err.message);
 
     return res.status(500).json({
-      message: "status failed",
+      message: 'Status check failed',
       error: err.response?.data || err.message
     });
   }
