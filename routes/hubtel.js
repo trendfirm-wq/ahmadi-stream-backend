@@ -31,7 +31,7 @@ const auth = (req, res, next) => {
 // =========================
 // HUBTEL PAYMENT INIT
 // =========================
-router.post('/hubtel/pay', auth, async (req, res) => {
+router.post('/pay', auth, async (req, res) => {
   try {
     const { phone, plan } = req.body;
 
@@ -113,7 +113,7 @@ router.post('/hubtel/pay', auth, async (req, res) => {
 // =========================
 // HUBTEL CALLBACK
 // =========================
-router.post('/hubtel/callback', async (req, res) => {
+router.post('/callback', async (req, res) => {
   try {
     const data = req.body;
 
@@ -166,7 +166,7 @@ router.post('/hubtel/callback', async (req, res) => {
 // =========================
 // CHECK PAYMENT STATUS
 // =========================
-router.get('/hubtel/status/:transactionId', async (req, res) => {
+router.get('/status/:transactionId', async (req, res) => {
   try {
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
