@@ -13,7 +13,7 @@ const trackRoutes = require('./routes/tracks');
 const coverUpload = require('./routes/coverUpload');
 const uploadRoutes = require('./routes/upload');
 const playlistRoutes = require('./routes/playlists');
-
+const hubtelRoutes = require('./routes/main');
 const app = express();
 
 // Middleware
@@ -43,7 +43,7 @@ app.use('/api/tracks', trackRoutes);
 app.use('/api/tracks', coverUpload);
 app.use('/api/tracks', uploadRoutes);
 app.use('/api/playlists', playlistRoutes);
-
+app.use('/api/hubtel', hubtelRoutes);
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', async () => {
