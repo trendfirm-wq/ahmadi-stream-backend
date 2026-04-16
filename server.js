@@ -38,6 +38,14 @@ app.get('/', (req, res) => {
   });
 });
 
+// ✅ TEST ROUTE (ADD THIS)
+app.get('/test-hubtel', (req, res) => {
+  res.json({
+    ok: true,
+    message: "Hubtel test route is working"
+  });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tracks', trackRoutes);
