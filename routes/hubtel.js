@@ -44,29 +44,44 @@ const PRICES = {
   yearly: 200,
 };
 
-router.post("/hubtel/pay", auth, async (req, res) => {
+router.post('/hubtel/pay', auth, async (req, res) => {
   try {
-    const { amount, plan, phone } = req.body;
+    const { phone, plan } = req.body;
+
+    const PRICES = {
+      monthly: 20,
+      quarterly: 55,
+      yearly: 200,
+    };
+
+    const amount = PRICES[plan];
+
+    if (!amount) {
+      return res.status(400).json({ message: "Invalid plan" });
+    }
+
+    const reference = `INV_${Date.now()}`;
 
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
     ).toString("base64");
 
-    const reference = `INV_${Date.now()}`;
+    const payload = {
+      totalAmount: Number(amount.toFixed(2)),
+      description: `${plan} subscription`,
+      callbackUrl: process.env.HUBTEL_CALLBACK_URL,
+      returnUrl: process.env.HUBTEL_RETURN_URL,
+      cancellationUrl: process.env.HUBTEL_RETURN_URL,
+      merchantAccountNumber: process.env.HUBTEL_MERCHANT_ID,
+      clientReference: reference,
+      payeeMobileNumber: phone
+    };
+
+    console.log("🔥 HUBTEL REQUEST:", payload);
 
     const response = await axios.post(
       "https://payproxyapi.hubtel.com/items/initiate",
-      {
-        totalAmount: Number(amount.toFixed(2)), // IMPORTANT (2 decimals rule)
-        description: `${plan} subscription`,
-        callbackUrl: process.env.HUBTEL_CALLBACK_URL,
-        returnUrl: `${process.env.BASE_URL}/success`,
-        cancellationUrl: `${process.env.BASE_URL}/cancel`,
-        merchantAccountNumber: process.env.HUBTEL_MERCHANT_ID,
-        clientReference: reference,
-        payeeName: phone || "",
-        payeeMobileNumber: phone || ""
-      },
+      payload,
       {
         headers: {
           Authorization: `Basic ${authHeader}`,
@@ -75,20 +90,19 @@ router.post("/hubtel/pay", auth, async (req, res) => {
       }
     );
 
-    console.log("HUBTEL RESPONSE:", response.data);
+    console.log("✅ HUBTEL RESPONSE:", response.data);
 
     return res.json({
       success: true,
-      checkoutUrl: response.data.data.checkoutUrl,
-      checkoutId: response.data.data.checkoutId,
+      checkoutUrl: response.data.data?.checkoutUrl,
       reference
     });
 
   } catch (err) {
-    console.log("HUBTEL ERROR:", err.response?.data || err.message);
+    console.log("❌ HUBTEL ERROR:", err.response?.data || err.message);
 
     return res.status(500).json({
-      message: "Payment initiation failed",
+      message: "Hubtel failed",
       error: err.response?.data || err.message
     });
   }
