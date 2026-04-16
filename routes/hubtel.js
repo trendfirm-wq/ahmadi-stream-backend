@@ -89,50 +89,5 @@ router.post('/pay', async (req, res) => {
   }
 
 });
-// 🔔 HUBTEL CALLBACK
 
-router.post('/callback', async (req, res) => {
-
-  try {
-
-    console.log(
-      "🔥 HUBTEL CALLBACK:",
-      JSON.stringify(req.body, null, 2)
-    );
-
-    const data = req.body;
-
-    if (data.status === "Success") {
-
-      const reference =
-        data.clientReference;
-
-      console.log(
-        "✅ PAYMENT SUCCESS:",
-        reference
-      );
-
-      // TODO:
-      // Update database
-      // Unlock premium
-      // Mark payment successful
-
-    }
-
-    res.sendStatus(200);
-
-  }
-
-  catch (err) {
-
-    console.log(
-      "🔥 CALLBACK ERROR:",
-      err.message
-    );
-
-    res.sendStatus(500);
-
-  }
-
-});
 module.exports = router;
