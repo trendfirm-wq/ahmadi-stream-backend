@@ -18,7 +18,13 @@ const auth = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+
+    // ✅ FIX: normalize user id
+    req.user = {
+      id: decoded._id || decoded.id,
+      email: decoded.email
+    };
+
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Invalid token' });
@@ -26,7 +32,7 @@ const auth = (req, res, next) => {
 };
 
 // =========================
-// PRICING (SOURCE OF TRUTH)
+// PRICING
 // =========================
 const PRICES = {
   monthly: 20,
@@ -61,17 +67,15 @@ router.post('/pay', auth, async (req, res) => {
     }
 
     // =========================
-    // CREATE UNIQUE REFERENCE
+    // CREATE REFERENCE
     // =========================
     const reference = `HUBTEL_${Date.now()}_${user._id}`;
 
-    // Save user payment intent
     user.plan_type = plan;
     user.payment_reference = reference;
     user.payment_status = 'pending';
     await user.save();
 
-    // Save payment record
     await Payment.create({
       user: user._id,
       amount,
@@ -126,7 +130,7 @@ router.post('/pay', auth, async (req, res) => {
 });
 
 // =========================
-// CALLBACK (HUBTEL WEBHOOK)
+// CALLBACK
 // =========================
 router.post('/callback', async (req, res) => {
   try {
