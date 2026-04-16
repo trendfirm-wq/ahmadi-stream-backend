@@ -46,7 +46,7 @@ const PRICES = {
 
 router.post('/hubtel/pay', auth, async (req, res) => {
   try {
-    const { phone, plan } = req.body;
+    const { plan } = req.body;
 
     const PRICES = {
       monthly: 20,
