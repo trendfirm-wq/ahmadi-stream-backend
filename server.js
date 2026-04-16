@@ -27,7 +27,8 @@ app.use(
     },
   })
 );
-
+console.log("🔥 SERVER STARTING...");
+console.log("🔥 HUBTEL FILE:", require('./routes/hubtel'));
 app.use('/uploads', express.static('uploads'));
 
 // Root Route
