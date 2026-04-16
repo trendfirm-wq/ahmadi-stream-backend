@@ -57,13 +57,15 @@ router.post("/hubtel/pay", auth, async (req, res) => {
     const response = await axios.post(
       "https://payproxyapi.hubtel.com/items/initiate",
       {
-        totalAmount: amount,
+        totalAmount: Number(amount.toFixed(2)), // IMPORTANT (2 decimals rule)
         description: `${plan} subscription`,
         callbackUrl: process.env.HUBTEL_CALLBACK_URL,
         returnUrl: `${process.env.BASE_URL}/success`,
         cancellationUrl: `${process.env.BASE_URL}/cancel`,
         merchantAccountNumber: process.env.HUBTEL_MERCHANT_ID,
-        clientReference: reference
+        clientReference: reference,
+        payeeName: phone || "",
+        payeeMobileNumber: phone || ""
       },
       {
         headers: {
@@ -75,16 +77,17 @@ router.post("/hubtel/pay", auth, async (req, res) => {
 
     console.log("HUBTEL RESPONSE:", response.data);
 
-    res.json({
+    return res.json({
       success: true,
-      paymentUrl: response.data.data.checkoutUrl || response.data.checkoutUrl,
+      checkoutUrl: response.data.data.checkoutUrl,
+      checkoutId: response.data.data.checkoutId,
       reference
     });
 
   } catch (err) {
     console.log("HUBTEL ERROR:", err.response?.data || err.message);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Payment initiation failed",
       error: err.response?.data || err.message
     });
