@@ -61,11 +61,16 @@ router.post('/pay', auth, async (req, res) => {
     }
 
     const userId = req.user.id || req.user._id || req.user.userId;
+
 const user = await User.findById(userId);
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+if (!user) {
+  return res.status(404).json({
+    message: 'User not found',
+    debug: req.user
+  });
+}
+ 
 
     // =========================
     // CREATE REFERENCE
