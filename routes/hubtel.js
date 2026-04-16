@@ -1,142 +1,232 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
+const dotenv = require('dotenv');
+
 const User = require('../models/User');
+const Track = require('../models/Track');
+const Artist = require('../models/Artist');
+const Stream = require('../models/Stream');
+const Payment = require('../models/Payment');
 
-// (You will later import hubtel utils here)
-// const { hubtelPay, hubtelStatus } = require('../utils/hubtel');
+dotenv.config();
 
+// =========================
+// AUTH MIDDLEWARE
+// =========================
+const auth = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'No token provided' });
 
-// =======================================
-// POST /hubtel/pay
-// Start payment
-// =======================================
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
 
-router.post('/pay', async (req, res) => {
+// =========================
+// HUBTEL PAYMENT INIT
+// =========================
+router.post('/hubtel/pay', auth, async (req, res) => {
   try {
     const { phone, plan } = req.body;
 
     if (!phone || !plan) {
-      return res.status(400).json({
-        message: 'Phone and plan required'
-      });
+      return res.status(400).json({ message: 'Phone and plan required' });
     }
 
-    // Determine amount
-    let amount;
+    const prices = {
+      monthly: 5,
+      yearly: 50
+    };
 
-    if (plan === 'monthly') amount = 5;
-    else if (plan === 'quarterly') amount = 15;
-    else if (plan === 'yearly') amount = 50;
-    else {
-      return res.status(400).json({
-        message: 'Invalid plan'
-      });
+    const amount = prices[plan];
+
+    if (!amount) {
+      return res.status(400).json({ message: 'Invalid plan' });
     }
 
-    // 🔥 Temporary reference generator
-    const reference =
-      "HB_" + Date.now();
+    const user = await User.findById(req.user.id);
 
-    console.log("Hubtel Pay Request:");
-    console.log({
-      phone,
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // 🔥 CREATE REFERENCE FIRST (FIXED)
+    const reference = `HUBTEL_${Date.now()}_${user._id}`;
+
+    // Save user intent
+    user.plan_type = plan;
+    user.payment_reference = reference;
+    user.payment_status = 'pending';
+    await user.save();
+
+    // Save payment record
+    await Payment.create({
+      user: user._id,
       amount,
-      reference
+      plan,
+      payment_reference: reference,
+      status: 'pending',
+      provider: 'hubtel'
     });
 
-    // TODO: Call Hubtel API here later
+    // Hubtel auth
+    const authHeader = Buffer.from(
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
+    ).toString('base64');
+
+    const response = await axios.post(
+      `${process.env.BASE_URL}/merchant-account/merchants/transactions/initiate`,
+      {
+        totalAmount: amount,
+        description: `${plan} subscription`,
+        callbackUrl: process.env.HUBTEL_CALLBACK_URL,
+        customerMsisdn: phone,
+        clientReference: reference,
+        channel: 'momo'
+      },
+      {
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
     res.json({
-      message: "Payment initiated",
-      reference
+      success: true,
+      reference,
+      hubtel: response.data
     });
 
   } catch (err) {
-    console.error("Hubtel Pay Error:", err);
-    res.status(500).json({
-      message: "Payment initiation failed"
-    });
+    console.error(err.response?.data || err.message);
+    res.status(500).json({ message: 'Payment failed' });
   }
 });
 
-
-
-// =======================================
-// POST /hubtel/callback
-// Hubtel sends payment result
-// =======================================
-
-router.post('/callback', async (req, res) => {
+// =========================
+// HUBTEL CALLBACK
+// =========================
+router.post('/hubtel/callback', async (req, res) => {
   try {
     const data = req.body;
 
-    console.log("Hubtel Callback Received:");
-    console.log(data);
+    console.log("HUBTEL CALLBACK:", data);
 
-    const {
-      status,
-      reference,
-      phone
-    } = data;
+    const reference = data.clientReference;
+    const status = data.status?.toLowerCase();
 
-    if (status === "SUCCESSFUL") {
+    if (!reference) return res.sendStatus(200);
 
-      // Find user (you may change logic later)
-      const user = await User.findOne({
-        phone: phone
-      });
+    const user = await User.findOne({ payment_reference: reference });
+    if (!user) return res.sendStatus(200);
 
-      if (user) {
+    const payment = await Payment.findOne({ payment_reference: reference });
+    if (!payment) return res.sendStatus(200);
 
-        let expiry = new Date();
+    // prevent duplicate processing
+    if (payment.status === 'approved') return res.sendStatus(200);
+
+    if (status === 'success' || status === 'successful') {
+
+      let expiry = new Date();
+
+      if (user.plan_type === 'monthly') {
         expiry.setMonth(expiry.getMonth() + 1);
-
-        user.subscription_status = "active";
-        user.subscription_expiry = expiry;
-
-        await user.save();
-
-        console.log("User subscription activated");
+      } else if (user.plan_type === 'yearly') {
+        expiry.setFullYear(expiry.getFullYear() + 1);
       }
+
+      user.subscription_status = 'active';
+      user.subscription_expiry = expiry;
+      user.payment_status = 'completed';
+
+      payment.status = 'approved';
+
+      await user.save();
+      await payment.save();
+
+      console.log("✅ SUBSCRIPTION ACTIVATED:", user.email);
     }
 
-    // Always respond 200 to Hubtel
     res.sendStatus(200);
 
   } catch (err) {
-    console.error("Hubtel Callback Error:", err);
-    res.sendStatus(500);
+    console.error(err);
+    res.sendStatus(200);
   }
 });
 
-
-
-// =======================================
-// GET /hubtel/status/:reference
-// Check payment manually
-// =======================================
-
-router.get('/status/:reference', async (req, res) => {
+// =========================
+// CHECK PAYMENT STATUS
+// =========================
+router.get('/hubtel/status/:transactionId', async (req, res) => {
   try {
-    const { reference } = req.params;
+    const authHeader = Buffer.from(
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
+    ).toString('base64');
 
-    console.log("Checking Hubtel status:", reference);
+    const response = await axios.get(
+      `${process.env.BASE_URL}/merchant-account/merchants/transactions/${req.params.transactionId}`,
+      {
+        headers: {
+          Authorization: `Basic ${authHeader}`
+        }
+      }
+    );
 
-    // TODO: Call Hubtel status API later
-
-    res.json({
-      reference,
-      status: "PENDING" // placeholder
-    });
+    res.json(response.data);
 
   } catch (err) {
-    console.error("Hubtel Status Error:", err);
-
-    res.status(500).json({
-      message: "Status check failed"
-    });
+    console.error(err.response?.data || err.message);
+    res.status(500).json({ message: 'Status check failed' });
   }
 });
 
+// =========================
+// STREAM PROTECTION
+// =========================
+router.get('/stream/:id', auth, async (req, res) => {
+  try {
+    const track = await Track.findById(req.params.id);
+
+    if (!track) {
+      return res.status(404).json({ message: 'Track not found' });
+    }
+
+    if (track.is_premium) {
+      const user = await User.findById(req.user.id);
+
+      if (
+        !user ||
+        user.subscription_status !== 'active' ||
+        (user.subscription_expiry && user.subscription_expiry < new Date())
+      ) {
+        return res.status(403).json({
+          message: 'Subscription required'
+        });
+      }
+    }
+
+    track.total_streams += 1;
+    await track.save();
+
+    const mediaUrl = track.type === 'video'
+      ? track.video_url
+      : track.file_path;
+
+    res.redirect(mediaUrl);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 module.exports = router;
