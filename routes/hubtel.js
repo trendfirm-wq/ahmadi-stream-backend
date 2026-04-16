@@ -144,6 +144,8 @@ router.post('/pay', auth, async (req, res) => {
 // =========================
 router.post('/callback', async (req, res) => {
   try {
+    console.log("🔥 HUBTEL CALLBACK HIT");
+console.log(req.body);
     const { clientReference, status } = req.body;
 
     if (!clientReference) return res.sendStatus(200);
