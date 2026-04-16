@@ -5,7 +5,9 @@ const jwt = require('jsonwebtoken');
 
 const User = require('../models/User');
 const Payment = require('../models/Payment');
-
+console.log("🔥 HUBTEL PAY HIT");
+console.log("BODY:", req.body);
+console.log("USER:", req.user);
 // AUTH
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
