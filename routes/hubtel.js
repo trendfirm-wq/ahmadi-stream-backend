@@ -384,77 +384,36 @@ router.post('/callback', async (req, res) => {
 // ===================================================
 // 3️⃣ PAYMENT STATUS CHECK
 // ===================================================
+router.get('/status/:reference', auth, async (req, res) => {
+  try {
+    const reference = req.params.reference;
 
-router.get(
-  '/status/:reference',
-  auth,
-  async (req, res) => {
+    const user = await User.findOne({
+      _id: req.user.id,
+      payment_reference: reference
+    });
 
-    try {
-
-      const reference =
-        req.params.reference;
-
-
-
-      const user =
-        await User.findOne({
-
-          payment_reference:
-            reference
-
-        });
-
-
-
-      if (!user) {
-
-        return res.status(404).json({
-
-          message:
-            "Payment not found"
-
-        });
-
-      }
-
-
-
-      res.json({
-
-        payment_status:
-          user.payment_status,
-
-        subscription_status:
-          user.subscription_status,
-
-        expiry:
-          user.subscription_expiry
-
+    if (!user) {
+      return res.status(404).json({
+        message: "Payment not found"
       });
-
     }
 
-    catch (err) {
+    res.json({
+      payment_status: user.payment_status,
+      subscription_status: user.subscription_status,
+      plan_type: user.plan_type,
+      subscription_start: user.subscription_start,
+      subscription_expiry: user.subscription_expiry
+    });
 
-      console.log(
-        "🔥 STATUS ERROR:",
-        err.message
-      );
+  } catch (err) {
+    console.log("🔥 STATUS ERROR:", err.message);
 
-
-
-      res.status(500).json({
-
-        message:
-          "Status check failed"
-
-      });
-
-    }
-
+    res.status(500).json({
+      message: "Status check failed"
+    });
   }
-
-);
+});
 
 module.exports = router;
