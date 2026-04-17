@@ -157,11 +157,13 @@ router.post('/callback', async (req, res) => {
 
     const reference = data.clientReference;
 
+    if (!reference) {
+      console.log('❌ Missing clientReference');
+      return res.sendStatus(200);
+    }
+
     console.log('✅ PAYMENT SUCCESS:', reference);
 
-    // ===========================
-    // FIND USER BY REFERENCE
-    // ===========================
     const user = await User.findOne({
       payment_reference: reference,
     });
@@ -171,13 +173,11 @@ router.post('/callback', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Prevent double activation
     if (user.payment_status === 'completed') {
       console.log('⚠️ Already processed');
       return res.sendStatus(200);
     }
 
-    // Use pending plan if available, else fallback
     const chosenPlan = user.pending_plan_type || user.plan_type;
 
     if (!chosenPlan || !PLAN_DAYS[chosenPlan]) {
@@ -185,12 +185,8 @@ router.post('/callback', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ===========================
-    // CALCULATE START DATE
-    // ===========================
     let startDate = new Date();
 
-    // If user still active, extend from existing expiry
     if (
       user.subscription_status === 'active' &&
       user.subscription_expiry &&
@@ -199,31 +195,26 @@ router.post('/callback', async (req, res) => {
       startDate = new Date(user.subscription_expiry);
     }
 
-    // ===========================
-    // CALCULATE EXPIRY
-    // ===========================
     const days = PLAN_DAYS[chosenPlan];
     const expiryDate = new Date(startDate);
     expiryDate.setDate(expiryDate.getDate() + days);
 
-    // ===========================
-    // UPDATE USER SUBSCRIPTION
-    // ===========================
     user.subscription_status = 'active';
     user.plan_type = chosenPlan;
     user.subscription_start = startDate;
     user.subscription_expiry = expiryDate;
     user.payment_status = 'completed';
-    user.pending_plan_type = null; // optional if schema has it
+    user.pending_plan_type = null;
+    user.payment_reference = reference;
 
     await user.save();
 
     console.log('🎉 SUBSCRIPTION ACTIVATED:', user._id);
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (err) {
     console.log('🔥 CALLBACK ERROR:', err.message);
-    res.sendStatus(500);
+    return res.sendStatus(500);
   }
 });
 
