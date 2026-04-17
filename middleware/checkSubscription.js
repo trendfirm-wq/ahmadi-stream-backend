@@ -1,45 +1,106 @@
 const User = require('../models/User');
 
 const checkSubscription = async (req, res, next) => {
+
   try {
-    // 1. Safety check
+
+    // =========================
+    // 1. AUTH CHECK
+    // =========================
+
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: 'Unauthorized' });
+
+      return res.status(401).json({
+        message: 'Unauthorized'
+      });
+
     }
 
-    const user = await User.findById(req.user.id);
+    const user =
+      await User.findById(req.user.id);
 
     if (!user) {
-      return res.status(401).json({ message: 'User not found' });
+
+      return res.status(401).json({
+        message: 'User not found'
+      });
+
     }
 
-    // 2. Check active status
+    // =========================
+    // 2. ADMIN BYPASS (VERY IMPORTANT)
+    // =========================
+
+    if (user.role === 'admin') {
+
+      req.subscriptionUser = user;
+
+      return next();
+
+    }
+
+    // =========================
+    // 3. CHECK ACTIVE STATUS
+    // =========================
+
     if (user.subscription_status !== 'active') {
+
       return res.status(403).json({
         message: 'Subscription required'
       });
+
     }
 
-    // 3. Check expiry safely
+    // =========================
+    // 4. CHECK EXPIRY
+    // =========================
+
     if (user.subscription_expiry) {
+
       const now = new Date();
 
-      if (new Date(user.subscription_expiry).getTime() < now.getTime()) {
+      const expiry =
+        new Date(user.subscription_expiry);
+
+      if (expiry.getTime() < now.getTime()) {
+
+        // 🔥 AUTO MARK EXPIRED
+
+        user.subscription_status = 'expired';
+
+        await user.save();
+
         return res.status(403).json({
           message: 'Subscription expired'
         });
+
       }
+
     }
 
-    // 4. Attach user to request (VERY IMPORTANT)
+    // =========================
+    // 5. ATTACH USER
+    // =========================
+
     req.subscriptionUser = user;
 
     next();
 
-  } catch (err) {
-    console.error("SUBSCRIPTION ERROR:", err);
-    res.status(500).json({ message: 'Server error' });
   }
+
+  catch (err) {
+
+    console.error(
+      "SUBSCRIPTION ERROR:",
+      err.message
+    );
+
+    res.status(500).json({
+      message: 'Server error'
+    });
+
+  }
+
 };
 
 module.exports = checkSubscription;

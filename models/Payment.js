@@ -1,15 +1,46 @@
 const mongoose = require('mongoose');
 
 const paymentSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
-  amount: { type: Number, required: true },
+  // =========================
+  // USER LINK
+  // =========================
 
-  payment_reference: { type: String, required: true },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
 
-  plan: { type: String, enum: ['monthly', 'yearly'] },
+  // =========================
+  // PAYMENT DETAILS
+  // =========================
 
-  provider: { type: String, default: 'hubtel' }, // 🔥 important
+  amount: {
+    type: Number,
+    required: true
+  },
+
+  payment_reference: {
+    type: String,
+    required: true,
+    unique: true // 🔥 prevents duplicate payments
+  },
+
+  plan: {
+    type: String,
+    enum: ['monthly', 'quarterly', 'yearly'], // 🔥 FIXED
+    required: true
+  },
+
+  provider: {
+    type: String,
+    default: 'hubtel'
+  },
+
+  // =========================
+  // PAYMENT STATUS
+  // =========================
 
   status: {
     type: String,
@@ -17,10 +48,20 @@ const paymentSchema = new mongoose.Schema({
     default: 'pending'
   },
 
-  metadata: { type: Object }, // 🔥 optional flexible storage
+  // =========================
+  // OPTIONAL HUBTEL DATA
+  // =========================
+
+  metadata: {
+    type: Object,
+    default: null
+  }
 
 }, {
-  timestamps: true // replaces created_at automatically
+
+  timestamps: true // createdAt & updatedAt
+
 });
 
-module.exports = mongoose.model('Payment', paymentSchema);
+module.exports =
+  mongoose.model('Payment', paymentSchema);
