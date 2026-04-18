@@ -41,6 +41,11 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    cancel_at_expiry: {
+      type: Boolean,
+      default: false,
+    },
+
     // =========================
     // PAYMENT TRACKING
     // =========================

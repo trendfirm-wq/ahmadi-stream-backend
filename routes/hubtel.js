@@ -265,5 +265,36 @@ router.get('/status/:reference', auth, async (req, res) => {
     });
   }
 });
+router.post('/cancel', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
 
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.subscription_status !== 'active') {
+      return res.status(400).json({ message: 'No active subscription to cancel' });
+    }
+
+    if (user.cancel_at_expiry) {
+      return res.status(400).json({
+        message: 'Subscription already set to cancel',
+      });
+    }
+
+    user.cancel_at_expiry = true;
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Subscription will end on expiry date',
+      cancel_at_expiry: true,
+      subscription_expiry: user.subscription_expiry,
+    });
+  } catch (err) {
+    console.error('CANCEL ERROR:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
 module.exports = router;
