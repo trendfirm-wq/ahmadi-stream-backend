@@ -1,27 +1,14 @@
 const express = require('express');
 const axios = require('axios');
-
 const router = express.Router();
 
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 
-// =============================
-// PLAN PRICES
-// =============================
 const PRICES = {
   monthly: 20,
   quarterly: 55,
   yearly: 200,
-};
-
-// =============================
-// PLAN DURATIONS
-// =============================
-const PLAN_DAYS = {
-  monthly: 30,
-  quarterly: 90,
-  yearly: 365,
 };
 
 // ===================================================
@@ -45,9 +32,7 @@ router.post('/pay', auth, async (req, res) => {
       });
     }
 
-    // =============================
     // AUTO EXPIRE IF OLD SUB ENDED
-    // =============================
     if (
       user.subscription_status === 'active' &&
       user.subscription_expiry &&
@@ -57,9 +42,7 @@ router.post('/pay', auth, async (req, res) => {
       await user.save();
     }
 
-    // =============================
     // BLOCK SAME ACTIVE PLAN
-    // =============================
     if (
       user.subscription_status === 'active' &&
       user.plan_type === plan &&
@@ -72,20 +55,16 @@ router.post('/pay', auth, async (req, res) => {
     }
 
     const amount = PRICES[plan];
-
     const reference = `INV_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
     ).toString('base64');
 
-    // =============================
-    // SAVE PAYMENT INFO TO USER
-    // DO NOT CHANGE LIVE plan_type YET
-    // =============================
+    // SAVE PAYMENT INFO FIRST
     user.payment_reference = reference;
     user.payment_status = 'pending';
-    user.pending_plan_type = plan; // optional if your schema has it
+    user.pending_plan_type = plan;
     await user.save();
 
     const payload = {
@@ -116,12 +95,15 @@ router.post('/pay', auth, async (req, res) => {
     const checkoutUrl = response.data?.data?.checkoutUrl;
 
     if (!checkoutUrl) {
+      user.payment_status = 'failed';
+      await user.save();
+
       return res.status(500).json({
         message: 'No checkout URL returned',
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       checkoutUrl,
       reference,
@@ -129,7 +111,17 @@ router.post('/pay', auth, async (req, res) => {
   } catch (err) {
     console.log('🔥 HUBTEL ERROR:', err.response?.data || err.message);
 
-    res.status(500).json({
+    try {
+      const user = await User.findById(req.user.id);
+      if (user) {
+        user.payment_status = 'failed';
+        await user.save();
+      }
+    } catch (saveErr) {
+      console.log('🔥 FAILED TO MARK PAYMENT FAILED:', saveErr.message);
+    }
+
+    return res.status(500).json({
       message: 'Hubtel failed',
       error: err.response?.data || err.message,
     });
@@ -137,111 +129,139 @@ router.post('/pay', auth, async (req, res) => {
 });
 
 // ===================================================
-// 2️⃣ CALLBACK — ACTIVATE SUBSCRIPTION
+// 2️⃣ HUBTEL CALLBACK
 // ===================================================
-router.post('/hubtel/callback', async (req, res) => {
+router.post('/callback', async (req, res) => {
   try {
-    console.log('🔥 HUBTEL CALLBACK BODY:', req.body);
+    console.log('🔥 HUBTEL CALLBACK BODY:', JSON.stringify(req.body, null, 2));
 
     const reference =
       req.body.clientReference ||
       req.body.ClientReference ||
       req.body.Data?.ClientReference ||
-      req.body.data?.clientReference;
+      req.body.data?.clientReference ||
+      req.body.Response?.ClientReference;
 
     const status =
       req.body.status ||
       req.body.Status ||
+      req.body.ResponseCode ||
       req.body.Data?.Status ||
-      req.body.data?.status;
+      req.body.data?.status ||
+      req.body.Response?.Status;
 
     console.log('🔥 Extracted reference:', reference);
     console.log('🔥 Extracted status:', status);
 
     if (!reference) {
-      return res.status(400).json({ message: 'No reference in callback' });
+      return res.status(400).json({
+        message: 'No payment reference found in callback',
+      });
     }
 
     const user = await User.findOne({ payment_reference: reference });
 
     if (!user) {
       console.log('❌ No user found for reference:', reference);
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({
+        message: 'User not found for reference',
+      });
     }
-
-    console.log('✅ Found user:', user.email);
 
     const paid =
       String(status).toLowerCase() === 'success' ||
       String(status).toLowerCase() === 'successful' ||
-      String(status).toLowerCase() === 'paid';
+      String(status).toLowerCase() === 'paid' ||
+      String(status) === '0000';
 
-    if (paid) {
-      const start = new Date();
-      const expiry = new Date();
-      expiry.setMonth(expiry.getMonth() + 1);
-
-      user.subscription_status = 'active';
-      user.plan_type = 'monthly';
-      user.subscription_start = start;
-      user.subscription_expiry = expiry;
-      user.is_premium = true;
-
+    if (!paid) {
+      user.payment_status = 'failed';
       await user.save();
 
-      console.log('✅ USER UPDATED TO PREMIUM:', user.email);
-    } else {
-      console.log('⚠️ Payment not marked successful:', status);
+      console.log('⚠️ Payment not successful:', status);
+
+      return res.status(200).json({
+        message: 'Payment not successful',
+      });
     }
 
-    return res.status(200).json({ message: 'Callback received' });
-  } catch (error) {
-    console.error('🔥 CALLBACK ERROR:', error);
-    return res.status(500).json({ message: 'Server error' });
+    const plan = user.pending_plan_type;
+
+    if (!plan) {
+      console.log('❌ No pending plan type found on user');
+      return res.status(400).json({
+        message: 'No pending plan type found',
+      });
+    }
+
+    const start = new Date();
+    const expiry = new Date(start);
+
+    if (plan === 'monthly') {
+      expiry.setMonth(expiry.getMonth() + 1);
+    } else if (plan === 'quarterly') {
+      expiry.setMonth(expiry.getMonth() + 3);
+    } else if (plan === 'yearly') {
+      expiry.setFullYear(expiry.getFullYear() + 1);
+    } else {
+      return res.status(400).json({
+        message: 'Invalid pending plan type',
+      });
+    }
+
+    user.payment_status = 'completed';
+    user.subscription_status = 'active';
+    user.plan_type = plan;
+    user.subscription_start = start;
+    user.subscription_expiry = expiry;
+    user.pending_plan_type = null;
+
+    await user.save();
+
+    console.log('✅ USER SUBSCRIPTION ACTIVATED:', user.email);
+
+    return res.status(200).json({
+      message: 'Callback processed successfully',
+    });
+  } catch (err) {
+    console.error('🔥 CALLBACK ERROR:', err);
+    return res.status(500).json({
+      message: 'Server error in callback',
+    });
   }
 });
 
 // ===================================================
-// 3️⃣ PAYMENT STATUS CHECK
+// 3️⃣ CHECK PAYMENT STATUS
 // ===================================================
 router.get('/status/:reference', auth, async (req, res) => {
   try {
-    const reference = req.params.reference;
+    const { reference } = req.params;
 
     const user = await User.findOne({
       _id: req.user.id,
       payment_reference: reference,
-    });
+    }).select('-password');
 
     if (!user) {
       return res.status(404).json({
-        message: 'Payment not found',
+        message: 'Payment record not found',
       });
     }
 
-    // auto-expire here too
-    if (
-      user.subscription_status === 'active' &&
-      user.subscription_expiry &&
-      new Date(user.subscription_expiry) <= new Date()
-    ) {
-      user.subscription_status = 'expired';
-      await user.save();
-    }
-
-    res.json({
+    return res.json({
+      success: true,
+      payment_reference: user.payment_reference,
       payment_status: user.payment_status,
       subscription_status: user.subscription_status,
       plan_type: user.plan_type,
       subscription_start: user.subscription_start,
       subscription_expiry: user.subscription_expiry,
-      payment_reference: user.payment_reference,
     });
   } catch (err) {
-    console.log('🔥 STATUS ERROR:', err.message);
-
-    res.status(500).json({
-      message: 'Status check failed',
+    console.error('🔥 STATUS ERROR:', err);
+    return res.status(500).json({
+      message: 'Server error',
     });
   }
 });
