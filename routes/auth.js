@@ -181,12 +181,10 @@ router.put('/update-profile', auth, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // 🔥 LIMIT SETTINGS
     const LIMIT = 3;
     const WINDOW_DAYS = 30;
     const now = new Date();
 
-    // Initialize if not set
     if (!user.profile_update_window_start) {
       user.profile_update_window_start = now;
       user.profile_update_count = 0;
@@ -196,13 +194,11 @@ router.put('/update-profile', auth, async (req, res) => {
       (now - new Date(user.profile_update_window_start)) /
       (1000 * 60 * 60 * 24);
 
-    // Reset after window
     if (diffDays > WINDOW_DAYS) {
       user.profile_update_window_start = now;
       user.profile_update_count = 0;
     }
 
-    // 🔥 CHECK IF NO CHANGE
     if (
       user.full_name === trimmedName &&
       user.email === normalizedEmail
@@ -210,14 +206,12 @@ router.put('/update-profile', auth, async (req, res) => {
       return res.json({ message: 'No changes detected' });
     }
 
-    // 🔥 LIMIT CHECK
     if (user.profile_update_count >= LIMIT) {
       return res.status(429).json({
         message: `You can only update your profile ${LIMIT} times every ${WINDOW_DAYS} days.`,
       });
     }
 
-    // 🔥 EMAIL DUPLICATE CHECK
     const existingEmailUser = await User.findOne({
       email: normalizedEmail,
       _id: { $ne: user._id },
@@ -229,7 +223,6 @@ router.put('/update-profile', auth, async (req, res) => {
       });
     }
 
-    // ✅ UPDATE
     user.full_name = trimmedName;
     user.email = normalizedEmail;
     user.profile_update_count += 1;
@@ -238,15 +231,28 @@ router.put('/update-profile', auth, async (req, res) => {
 
     const token = generateToken(user);
 
-    res.json({
+    return res.json({
       success: true,
       message: `Profile updated (${user.profile_update_count}/${LIMIT})`,
       token,
+      user: {
+        id: user._id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        subscription_status: user.subscription_status,
+        plan_type: user.plan_type,
+        subscription_start: user.subscription_start,
+        subscription_expiry: user.subscription_expiry,
+        cancel_at_expiry: user.cancel_at_expiry,
+        profile_update_count: user.profile_update_count,
+        profile_update_window_start: user.profile_update_window_start,
+      },
     });
-
   } catch (err) {
     console.error('UPDATE PROFILE ERROR:', err);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 // ===== FORGOT PASSWORD =====
