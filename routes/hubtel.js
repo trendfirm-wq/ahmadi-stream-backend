@@ -139,82 +139,65 @@ router.post('/pay', auth, async (req, res) => {
 // ===================================================
 // 2️⃣ CALLBACK — ACTIVATE SUBSCRIPTION
 // ===================================================
-router.post('/callback', async (req, res) => {
+router.post('/hubtel/callback', async (req, res) => {
   try {
-    console.log('🔥 HUBTEL CALLBACK:', JSON.stringify(req.body, null, 2));
+    console.log('🔥 HUBTEL CALLBACK BODY:', req.body);
 
-    const data = req.body;
+    const reference =
+      req.body.clientReference ||
+      req.body.ClientReference ||
+      req.body.Data?.ClientReference ||
+      req.body.data?.clientReference;
 
-    const isSuccess =
-      data.status === 'Success' ||
-      data.status === 'Successful' ||
-      data.status === 'Paid';
+    const status =
+      req.body.status ||
+      req.body.Status ||
+      req.body.Data?.Status ||
+      req.body.data?.status;
 
-    if (!isSuccess) {
-      console.log('❌ PAYMENT NOT SUCCESSFUL');
-      return res.sendStatus(200);
-    }
-
-    const reference = data.clientReference;
+    console.log('🔥 Extracted reference:', reference);
+    console.log('🔥 Extracted status:', status);
 
     if (!reference) {
-      console.log('❌ Missing clientReference');
-      return res.sendStatus(200);
+      return res.status(400).json({ message: 'No reference in callback' });
     }
 
-    console.log('✅ PAYMENT SUCCESS:', reference);
-
-    const user = await User.findOne({
-      payment_reference: reference,
-    });
+    const user = await User.findOne({ payment_reference: reference });
 
     if (!user) {
-      console.log('❌ User not found');
-      return res.sendStatus(200);
+      console.log('❌ No user found for reference:', reference);
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    if (user.payment_status === 'completed') {
-      console.log('⚠️ Already processed');
-      return res.sendStatus(200);
+    console.log('✅ Found user:', user.email);
+
+    const paid =
+      String(status).toLowerCase() === 'success' ||
+      String(status).toLowerCase() === 'successful' ||
+      String(status).toLowerCase() === 'paid';
+
+    if (paid) {
+      const start = new Date();
+      const expiry = new Date();
+      expiry.setMonth(expiry.getMonth() + 1);
+
+      user.subscription_status = 'active';
+      user.plan_type = 'monthly';
+      user.subscription_start = start;
+      user.subscription_expiry = expiry;
+      user.is_premium = true;
+
+      await user.save();
+
+      console.log('✅ USER UPDATED TO PREMIUM:', user.email);
+    } else {
+      console.log('⚠️ Payment not marked successful:', status);
     }
 
-    const chosenPlan = user.pending_plan_type || user.plan_type;
-
-    if (!chosenPlan || !PLAN_DAYS[chosenPlan]) {
-      console.log('❌ Invalid pending plan');
-      return res.sendStatus(200);
-    }
-
-    let startDate = new Date();
-
-    if (
-      user.subscription_status === 'active' &&
-      user.subscription_expiry &&
-      new Date(user.subscription_expiry) > new Date()
-    ) {
-      startDate = new Date(user.subscription_expiry);
-    }
-
-    const days = PLAN_DAYS[chosenPlan];
-    const expiryDate = new Date(startDate);
-    expiryDate.setDate(expiryDate.getDate() + days);
-
-    user.subscription_status = 'active';
-    user.plan_type = chosenPlan;
-    user.subscription_start = startDate;
-    user.subscription_expiry = expiryDate;
-    user.payment_status = 'completed';
-    user.pending_plan_type = null;
-    user.payment_reference = reference;
-
-    await user.save();
-
-    console.log('🎉 SUBSCRIPTION ACTIVATED:', user._id);
-
-    return res.sendStatus(200);
-  } catch (err) {
-    console.log('🔥 CALLBACK ERROR:', err.message);
-    return res.sendStatus(500);
+    return res.status(200).json({ message: 'Callback received' });
+  } catch (error) {
+    console.error('🔥 CALLBACK ERROR:', error);
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 
