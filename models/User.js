@@ -67,6 +67,19 @@ const userSchema = new mongoose.Schema(
     },
 
     // =========================
+    // PROFILE UPDATE LIMIT
+    // =========================
+    profile_update_count: {
+      type: Number,
+      default: 0,
+    },
+
+    profile_update_window_start: {
+      type: Date,
+      default: null,
+    },
+
+    // =========================
     // PASSWORD RESET
     // =========================
     resetToken: {
