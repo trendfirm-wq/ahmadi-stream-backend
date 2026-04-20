@@ -6,8 +6,19 @@ const User = require('../models/User');
 const dotenv = require('dotenv');
 const auth = require('../middleware/auth');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
+// ==============================
+// EMAIL TRANSPORTER
+// ==============================
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -260,31 +271,59 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (!email) {
+    if (!email || !email.trim()) {
       return res.status(400).json({ message: 'Email is required' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-
     const user = await User.findOne({ email: normalizedEmail });
 
+    // Always return same response
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.json({
+        message: 'If an account exists for this email, a reset link has been sent.',
+      });
     }
 
+    // Create raw token
     const resetToken = crypto.randomBytes(32).toString('hex');
 
-    user.resetToken = resetToken;
-    user.resetTokenExpiry = Date.now() + 1000 * 60 * 15;
+    // Hash token before saving to DB
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    user.resetToken = hashedToken;
+    user.resetTokenExpiry = Date.now() + 1000 * 60 * 15; // 15 mins
     await user.save();
 
-    res.json({
-      message: 'Reset token generated',
-      resetToken,
+    // TEMP WEB LINK
+    const resetLink = `https://trendspaceventures.netlify.app/reset-password?token=${resetToken}`;
+
+    // OR APP DEEP LINK LATER
+    // const resetLink = `saani://reset-password?token=${resetToken}`;
+
+    await transporter.sendMail({
+      from: `"Saani App" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Reset your password',
+      html: `
+        <p>Hello ${user.full_name || 'User'},</p>
+        <p>You requested to reset your password.</p>
+        <p>Click the link below to continue:</p>
+        <p><a href="${resetLink}">${resetLink}</a></p>
+        <p>This link expires in 15 minutes.</p>
+        <p>If you did not request this, ignore this email.</p>
+      `,
+    });
+
+    return res.json({
+      message: 'If an account exists for this email, a reset link has been sent.',
     });
   } catch (error) {
     console.error('FORGOT PASSWORD ERROR:', error);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -297,8 +336,19 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ message: 'All fields required' });
     }
 
+    if (newPassword.trim().length < 6) {
+      return res.status(400).json({
+        message: 'Password must be at least 6 characters',
+      });
+    }
+
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
     const user = await User.findOne({
-      resetToken: token,
+      resetToken: hashedToken,
       resetTokenExpiry: { $gt: Date.now() },
     });
 
@@ -307,17 +357,17 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+    user.password = await bcrypt.hash(newPassword.trim(), salt);
 
     user.resetToken = null;
     user.resetTokenExpiry = null;
 
     await user.save();
 
-    res.json({ message: 'Password updated successfully' });
+    return res.json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('RESET PASSWORD ERROR:', error);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 
