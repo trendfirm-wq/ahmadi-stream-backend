@@ -299,7 +299,7 @@ router.post('/forgot-password', async (req, res) => {
     await user.save();
 
     // TEMP WEB LINK
-    const resetLink = `https://trendspaceventures.netlify.app/reset-password?token=${resetToken}`;
+    const resetLink = `https://saani-web.netlify.app/reset-password.html?token=${resetToken}`;
 
     // OR APP DEEP LINK LATER
     // const resetLink = `saani://reset-password?token=${resetToken}`;
