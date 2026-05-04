@@ -1,4 +1,4 @@
-const express = require('express');
+½const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -300,6 +300,7 @@ router.post('/forgot-password', async (req, res) => {
 
     // TEMP WEB LINK
     const resetLink = `https://saani-web.netlify.app/reset-password.html?token=${resetToken}`;
+    
 
     // OR APP DEEP LINK LATER
     // const resetLink = `saani://reset-password?token=${resetToken}`;

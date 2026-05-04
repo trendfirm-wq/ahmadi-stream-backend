@@ -297,4 +297,135 @@ router.post('/cancel', auth, async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
+// ===================================================
+// 5️⃣ CHECK HUBTEL TRANSACTION STATUS DIRECTLY
+// ===================================================
+router.get('/hubtel-status/:clientReference', auth, async (req, res) => {
+  try {
+    const { clientReference } = req.params;
+
+    if (!clientReference) {
+      return res.status(400).json({
+        success: false,
+        message: 'clientReference is required',
+      });
+    }
+
+    const user = await User.findOne({
+      _id: req.user.id,
+      payment_reference: clientReference,
+    }).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment reference not found for this user',
+      });
+    }
+
+    const authHeader = Buffer.from(
+      `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
+    ).toString('base64');
+
+    const url = `https://rmsc.hubtel.com/v1/merchantaccount/merchants/${process.env.HUBTEL_POS_SALES_ID}/transactions/status?clientReference=${clientReference}`;
+
+    console.log('🔥 CHECKING HUBTEL STATUS:', url);
+
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('🔥 HUBTEL STATUS RESPONSE:', response.data);
+
+    const hubtelData = response.data;
+
+    const hubtelStatus =
+      hubtelData?.data?.status ||
+      hubtelData?.Data?.Status ||
+      hubtelData?.status ||
+      hubtelData?.Status ||
+      hubtelData?.responseCode ||
+      hubtelData?.ResponseCode;
+
+    const paid =
+      String(hubtelStatus).toLowerCase() === 'success' ||
+      String(hubtelStatus).toLowerCase() === 'successful' ||
+      String(hubtelStatus).toLowerCase() === 'paid' ||
+      String(hubtelStatus) === '0000';
+
+    const failed =
+      String(hubtelStatus).toLowerCase() === 'failed' ||
+      String(hubtelStatus).toLowerCase() === 'cancelled' ||
+      String(hubtelStatus).toLowerCase() === 'canceled';
+
+    if (paid && user.payment_status !== 'completed') {
+      const plan = user.pending_plan_type || user.plan_type;
+
+      if (!plan) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment was successful, but no pending plan type was found',
+          hubtelStatus,
+          hubtel: hubtelData,
+        });
+      }
+
+      const start = new Date();
+      const expiry = new Date(start);
+
+      if (plan === 'monthly') {
+        expiry.setMonth(expiry.getMonth() + 1);
+      } else if (plan === 'quarterly') {
+        expiry.setMonth(expiry.getMonth() + 3);
+      } else if (plan === 'yearly') {
+        expiry.setFullYear(expiry.getFullYear() + 1);
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid plan type',
+          plan,
+        });
+      }
+
+      user.payment_status = 'completed';
+      user.subscription_status = 'active';
+      user.plan_type = plan;
+      user.subscription_start = start;
+      user.subscription_expiry = expiry;
+      user.pending_plan_type = null;
+      user.cancel_at_expiry = false;
+
+      await user.save();
+    }
+
+    if (failed && user.payment_status !== 'completed') {
+      user.payment_status = 'failed';
+      await user.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Hubtel transaction status checked successfully',
+      payment_reference: user.payment_reference,
+      local_payment_status: user.payment_status,
+      subscription_status: user.subscription_status,
+      plan_type: user.plan_type,
+      subscription_start: user.subscription_start,
+      subscription_expiry: user.subscription_expiry,
+      hubtel_status: hubtelStatus,
+      hubtel: hubtelData,
+    });
+  } catch (err) {
+    console.error('🔥 HUBTEL STATUS CHECK ERROR:', err.response?.data || err.message);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to check Hubtel transaction status',
+      error: err.response?.data || err.message,
+    });
+  }
+});
 module.exports = router;
