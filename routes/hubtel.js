@@ -323,11 +323,20 @@ router.get('/hubtel-status/:clientReference', auth, async (req, res) => {
       });
     }
 
+    if (!process.env.HUBTEL_COLLECTION_ACCOUNT_NUMBER) {
+      return res.status(500).json({
+        success: false,
+        message: 'HUBTEL_COLLECTION_ACCOUNT_NUMBER is missing',
+      });
+    }
+
     const authHeader = Buffer.from(
       `${process.env.HUBTEL_CLIENT_ID}:${process.env.HUBTEL_CLIENT_SECRET}`
     ).toString('base64');
 
-    const url = `https://rmsc.hubtel.com/v1/merchantaccount/merchants/${process.env.HUBTEL_POS_SALES_ID}/transactions/status?clientReference=${clientReference}`;
+    const encodedReference = encodeURIComponent(clientReference);
+
+    const url = `https://api-txnstatus.hubtel.com/transactions/${process.env.HUBTEL_COLLECTION_ACCOUNT_NUMBER}/status?clientReference=${encodedReference}`;
 
     console.log('🔥 CHECKING HUBTEL STATUS:', url);
 
@@ -346,20 +355,21 @@ router.get('/hubtel-status/:clientReference', auth, async (req, res) => {
       hubtelData?.data?.status ||
       hubtelData?.Data?.Status ||
       hubtelData?.status ||
-      hubtelData?.Status ||
-      hubtelData?.responseCode ||
-      hubtelData?.ResponseCode;
+      hubtelData?.Status;
 
-    const paid =
-      String(hubtelStatus).toLowerCase() === 'success' ||
-      String(hubtelStatus).toLowerCase() === 'successful' ||
-      String(hubtelStatus).toLowerCase() === 'paid' ||
-      String(hubtelStatus) === '0000';
+    const normalizedStatus = String(hubtelStatus || '').toLowerCase();
+
+    const paid = normalizedStatus === 'paid';
+
+    const unpaid =
+      normalizedStatus === 'unpaid' ||
+      normalizedStatus === 'pending';
 
     const failed =
-      String(hubtelStatus).toLowerCase() === 'failed' ||
-      String(hubtelStatus).toLowerCase() === 'cancelled' ||
-      String(hubtelStatus).toLowerCase() === 'canceled';
+      normalizedStatus === 'failed' ||
+      normalizedStatus === 'cancelled' ||
+      normalizedStatus === 'canceled' ||
+      normalizedStatus === 'refunded';
 
     if (paid && user.payment_status !== 'completed') {
       const plan = user.pending_plan_type || user.plan_type;
@@ -416,6 +426,7 @@ router.get('/hubtel-status/:clientReference', auth, async (req, res) => {
       subscription_start: user.subscription_start,
       subscription_expiry: user.subscription_expiry,
       hubtel_status: hubtelStatus,
+      hubtel_response_code: hubtelData?.responseCode || hubtelData?.ResponseCode,
       hubtel: hubtelData,
     });
   } catch (err) {
