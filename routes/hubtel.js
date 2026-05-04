@@ -6,7 +6,7 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 const PRICES = {
-  monthly: 20,
+  monthly: 2,
   quarterly: 55,
   yearly: 200,
 };
