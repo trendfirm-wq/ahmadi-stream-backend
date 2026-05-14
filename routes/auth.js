@@ -40,23 +40,29 @@ const generateToken = (user) => {
 // ===== REGISTER USER =====
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, email, phone, password } = req.body;
+   const { full_name, email, phone, password } = req.body;
 
-    if (!full_name || !email || !password) {
+const cleanPassword = String(password || '').trim();
+
+    if (!full_name || !email || !cleanPassword) {
       return res.status(400).json({
         message: 'Full name, email, and password are required.',
       });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-
+if (cleanPassword.length < 6) {
+  return res.status(400).json({
+    message: 'Password must be at least 6 characters.',
+  });
+}
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already registered.' });
     }
 
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(cleanPassword, salt);
 
     const newUser = new User({
       full_name: full_name.trim(),
@@ -94,9 +100,11 @@ router.post('/register', async (req, res) => {
 // ===== LOGIN USER =====
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+   const { email, password } = req.body;
 
-    if (!email || !password) {
+const cleanPassword = String(password || '').trim();
+
+   if (!email || !cleanPassword) {
       return res.status(400).json({
         message: 'Email and password are required.',
       });
@@ -109,7 +117,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid email or password.' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+   const isMatch = await bcrypt.compare(cleanPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid email or password.' });
     }
@@ -142,21 +150,27 @@ router.post('/login', async (req, res) => {
 router.post('/change-password', auth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
+const cleanCurrentPassword = String(currentPassword || '').trim();
+const cleanNewPassword = String(newPassword || '').trim();
 
-    if (!currentPassword || !newPassword) {
+   if (!cleanCurrentPassword || !cleanNewPassword) {
       return res.status(400).json({ message: 'All fields required' });
     }
-
+if (cleanNewPassword.length < 6) {
+  return res.status(400).json({
+    message: 'Password must be at least 6 characters',
+  });
+}
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
+   const isMatch = await bcrypt.compare(cleanCurrentPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Current password incorrect' });
     }
 
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+   user.password = await bcrypt.hash(cleanNewPassword, salt);
 
     await user.save();
 
