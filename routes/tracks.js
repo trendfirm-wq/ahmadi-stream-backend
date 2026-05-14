@@ -725,5 +725,31 @@ if (event.event === 'charge.success') {
     res.sendStatus(500);
   }
 });
+router.get('/public/:id', async (req, res) => {
+  try {
+    const track = await Track.findById(req.params.id)
+      .populate('artist', 'name');
 
+    if (!track) {
+      return res.status(404).json({
+        message: 'Track not found',
+      });
+    }
+
+    res.json({
+      id: track._id,
+      title: track.title,
+      artist: track.artist?.name || 'Unknown Artist',
+      cover_image: track.cover_image,
+      type: track.type,
+      is_premium: track.is_premium,
+      share_url: `https://sanni.app/track/${track._id}`,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: 'Server error',
+    });
+  }
+});
 module.exports = router;

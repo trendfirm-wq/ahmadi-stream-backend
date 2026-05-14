@@ -51,6 +51,33 @@ const cleanPassword = String(password || '').trim();
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+if (!emailRegex.test(normalizedEmail)) {
+  return res.status(400).json({
+    message: 'Please enter a valid email address.',
+  });
+}
+
+const commonEmailMistakes = [
+  'gmail.coma',
+  'gmail.con',
+  'gmail.co',
+  'gmai.com',
+  'gmial.com',
+  'yahoo.coma',
+  'hotmail.coma',
+  'outlook.coma',
+];
+
+const emailDomain = normalizedEmail.split('@')[1];
+
+if (commonEmailMistakes.includes(emailDomain)) {
+  return res.status(400).json({
+    message: 'Please check your email address. Did you mean gmail.com?',
+  });
+}
 if (cleanPassword.length < 6) {
   return res.status(400).json({
     message: 'Password must be at least 6 characters.',
